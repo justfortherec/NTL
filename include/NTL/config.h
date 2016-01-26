@@ -158,19 +158,6 @@ using the configure script.
 
 #endif
 
-#if 0
-#define NTL_PCLMUL
-
-/* 
- * Use this flag for faster GF2X arithmetc.  
- * This enables the use of the PCLMUL instruction on x86-64
- * machines. 
- *
- * To re-build after changing this flag:
- *   rm GF2X.o; make ntl.a
- */
-
-#endif
 
 #if 0
 #define NTL_LONG_LONG_TYPE long long
@@ -596,6 +583,19 @@ using the configure script.
 #endif
 
 
+#if 0
+#define NTL_PCLMUL
+
+/* 
+ * Use this flag for faster GF2X arithmetc.  
+ * This enables the use of the PCLMUL instruction on x86-64
+ * machines. 
+ *
+ * To re-build after changing this flag:
+ *   rm GF2X.o; make ntl.a
+ */
+
+#endif
 
 
 
