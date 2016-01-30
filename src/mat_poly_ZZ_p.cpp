@@ -9,7 +9,7 @@ void CharPoly(ZZ_pX& f, const mat_ZZ_p& M)
 {
    long n = M.NumRows();
    if (M.NumCols() != n)
-      LogicError("CharPoly: nonsquare matrix");
+      Error("CharPoly: nonsquare matrix");
 
    if (n == 0) {
       set(f);

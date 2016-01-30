@@ -6,16 +6,41 @@
 NTL_START_IMPL
 
 
-GF2 power(GF2 a, long e)
+void div(GF2& x, GF2 a, GF2 b)
+{
+   if (b == 0) Error("GF2: division by zero");
+   x = a;
+}
+
+void div(GF2& x, long a, GF2 b)
+{
+   if (b == 0) Error("GF2: division by zero");
+   x = a;
+}
+
+void div(GF2& x, GF2 a, long b)
+{
+   if ((b & 1) == 0) Error("GF2: division by zero");
+   x = a;
+}
+
+void inv(GF2& x, GF2 a)
+{
+   if (a == 0) Error("GF2: division by zero");
+   x = a;
+}
+
+void power(GF2& x, GF2 a, long e)
 {
    if (e == 0) {
-      return to_GF2(1); 
+      x = 1;
+      return;
    }
 
-   if (e < 0 && IsZero(a)) 
-      ArithmeticError("GF2: division by zero");
+   if (e < 0 && a == 0) 
+      Error("GF2: division by zero");
 
-   return a;
+   x = a;
 }
 
 ostream& operator<<(ostream& s, GF2 a)
@@ -28,12 +53,11 @@ ostream& operator<<(ostream& s, GF2 a)
    return s;
 }
 
-istream& operator>>(istream& s, ref_GF2 x)
+istream& operator>>(istream& s, GF2& x)
 {
-   NTL_ZZRegister(a);
+   static ZZ a;
 
-   NTL_INPUT_CHECK_RET(s, s >> a);
-
+   s >> a;
    conv(x, a);
    return s;
 }

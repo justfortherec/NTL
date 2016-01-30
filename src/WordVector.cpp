@@ -2,7 +2,6 @@
 #include <NTL/WordVector.h>
 
 #include <NTL/new.h>
-#include <cstdio>
 
 NTL_START_IMPL
 
@@ -13,11 +12,11 @@ void WordVector::DoSetLength(long n)
    long m;  
   
    if (n < 0) {  
-      LogicError("negative length in vector::SetLength");  
+      Error("negative length in vector::SetLength");  
    }  
 
-   if (NTL_OVERFLOW(n, NTL_BITS_PER_LONG, 0)) 
-      ResourceError("length too big in vector::SetLength");
+   if (n >= (1L << (NTL_BITS_PER_LONG-4))/NTL_BITS_PER_LONG) 
+      Error("length too big in vector::SetLength");
       
    if (n == 0) {  
       if (rep) rep[-1] = 0;  
@@ -27,16 +26,13 @@ void WordVector::DoSetLength(long n)
    if (!rep) {  
       m = ((n+NTL_WordVectorMinAlloc-1)/NTL_WordVectorMinAlloc) * NTL_WordVectorMinAlloc; 
 
-      if (NTL_OVERFLOW(m, NTL_BITS_PER_LONG, 0))
-         ResourceError("length too big in vector::SetLength");
+      if (m >= (1L << (NTL_BITS_PER_LONG-4))/NTL_BITS_PER_LONG) 
+         Error("length too big in vector::SetLength");
 
-      _ntl_ulong *p = (_ntl_ulong *) 
-                      NTL_MALLOC(m, sizeof(_ntl_ulong), 2*sizeof(_ntl_ulong));
-
+      _ntl_ulong *p = (_ntl_ulong *) malloc(sizeof(_ntl_ulong)*(m+2)); 
       if (!p) {  
-	 MemoryError();  
+	 Error("out of memory in SetLength()");  
       }  
-
       rep = p+2;
 
       rep[-1] = n;
@@ -47,6 +43,7 @@ void WordVector::DoSetLength(long n)
 
    long max_length = (rep[-2] >> 1);
 
+
    if (n <= max_length) {  
       rep[-1] = n;  
       return;
@@ -54,23 +51,20 @@ void WordVector::DoSetLength(long n)
 
    long frozen = (rep[-2] & 1);
 
-   if (frozen) LogicError("Cannot grow this WordVector");
+   if (frozen) Error("Cannot grow this WordVector");
       
    m = max(n, long(NTL_WordVectorExpansionRatio*max_length));
 
    m = ((m+NTL_WordVectorMinAlloc-1)/NTL_WordVectorMinAlloc)*NTL_WordVectorMinAlloc; 
    _ntl_ulong *p = rep - 2;
 
-   if (NTL_OVERFLOW(m, NTL_BITS_PER_LONG, 0))
-      ResourceError("length too big in vector::SetLength");
+   if (m >= (1L << (NTL_BITS_PER_LONG-4))/NTL_BITS_PER_LONG) 
+      Error("length too big in vector::SetLength");
 
-   p = (_ntl_ulong *) 
-       NTL_REALLOC(p, m, sizeof(_ntl_ulong), 2*sizeof(_ntl_ulong)); 
-
+   p = (_ntl_ulong *) realloc(p, sizeof(_ntl_ulong)*(m+2)); 
    if (!p) {  
-      MemoryError();  
+      Error("out of memory in SetLength()");  
    }  
-
    rep = p+2;
 
    rep[-1] = n;
@@ -100,6 +94,7 @@ WordVector& WordVector::operator=(const WordVector& a)
    SetLength(n);  
    p = elts();  
   
+  
    for (i = 0; i < n; i++)  
       p[i] = ap[i];  
 
@@ -110,63 +105,67 @@ WordVector& WordVector::operator=(const WordVector& a)
 WordVector::~WordVector()  
 {  
    if (!rep) return;  
-   if (rep[-2] & 1) TerminalError("Cannot free this WordVector");
+   if (rep[-2] & 1) Error("Cannot free this WordVector");
    free(rep-2);
 }  
    
 void WordVector::kill()  
 {  
    if (!rep) return;  
-   if (rep[-2] & 1) LogicError("Cannot free this WordVector");
+   if (rep[-2] & 1) 
+      Error("Cannot free this WordVector");
    free(rep-2);
    rep = 0; 
 }  
   
+void WordVector::RangeError(long i) const  
+{  
+   cerr << "index out of range in vector: ";  
+   cerr << i;  
+   if (!rep)  
+      cerr << "(0)\n";  
+   else  
+      cerr << "(" << rep[-1] << ")\n";  
+   abort();  
+}  
+
 void CopySwap(WordVector& x, WordVector& y)
 {
-   NTL_THREAD_LOCAL static WordVector t;
-   WordVectorWatcher watch_t(t);
-
-   long sz_x = x.length();
-   long sz_y = y.length();
-   long sz = (sz_x > sz_y) ? sz_x : sz_y;
-
-   x.SetMaxLength(sz);
-   y.SetMaxLength(sz);
-
-   // EXCEPTIONS: all of the above ensures that swap provides strong ES
-
+   static WordVector t;
    t = x;
    x = y;
    y = t;
 }
  
-void WordVector::swap(WordVector& y)  
+void WordVector::swap_impl(WordVector& x, WordVector& y)  
 {  
-   if ((this->rep && (this->rep[-2] & 1)) ||
+   if ((x.rep && (x.rep[-2] & 1)) ||
        (y.rep && (y.rep[-2] & 1))) {
-      CopySwap(*this, y);
+      CopySwap(x, y);
       return;
    }
 
-   _ntl_swap(this->rep, y.rep);
+   _ntl_ulong* t;  
+   t = x.rep;  
+   x.rep = y.rep;  
+   y.rep = t;  
 } 
  
-void WordVector::append(_ntl_ulong a)  
+void WordVector::append_impl(WordVector& v, _ntl_ulong a)  
 {  
-   long l = this->length();
-   this->SetLength(l+1);  
-   (*this)[l] = a;  
+   long l = v.length();
+   v.SetLength(l+1);  
+   v[l] = a;  
 }  
   
-void WordVector::append(const WordVector& w)  
+void WordVector::append_impl(WordVector& v, const WordVector& w)  
 {  
-   long l = this->length();  
+   long l = v.length();  
    long m = w.length();  
    long i;  
-   this->SetLength(l+m);  
+   v.SetLength(l+m);  
    for (i = 0; i < m; i++)  
-      (*this)[l+i] = w[i];  
+      v[l+i] = w[i];  
 }
 
 
@@ -175,15 +174,15 @@ istream & operator>>(istream& s, WordVector& a)
    WordVector ibuf;  
    long c;   
    long n;   
-   if (!s) NTL_INPUT_ERROR(s, "bad vector input"); 
+   if (!s) Error("bad vector input"); 
    
    c = s.peek();  
-   while (IsWhiteSpace(c)) {  
+   while (c == ' ' || c == '\n' || c == '\t') {  
       s.get();  
       c = s.peek();  
    }  
    if (c != '[') {  
-      NTL_INPUT_ERROR(s, "bad vector input");  
+      Error("bad vector input");  
    }  
  
    n = 0;   
@@ -191,7 +190,7 @@ istream & operator>>(istream& s, WordVector& a)
       
    s.get();  
    c = s.peek();  
-   while (IsWhiteSpace(c)) {  
+   while (c == ' ' || c == '\n' || c == '\t') {  
       s.get();  
       c = s.peek();  
    }  
@@ -199,14 +198,14 @@ istream & operator>>(istream& s, WordVector& a)
       if (n % NTL_WordVectorInputBlock == 0) ibuf.SetMaxLength(n + NTL_WordVectorInputBlock); 
       n++;   
       ibuf.SetLength(n);   
-      if (!(s >> ibuf[n-1])) NTL_INPUT_ERROR(s, "bad vector input");   
+      if (!(s >> ibuf[n-1])) Error("bad vector input");   
       c = s.peek();  
-      while (IsWhiteSpace(c)) {  
+      while (c == ' ' || c == '\n' || c == '\t') {  
          s.get();  
          c = s.peek();  
       }  
    }   
-   if (c == EOF) NTL_INPUT_ERROR(s, "bad vector input");  
+   if (c == EOF) Error("bad vector input");  
    s.get(); 
    
    a = ibuf; 
@@ -317,82 +316,5 @@ void ShiftAdd(_ntl_ulong *cp, const _ntl_ulong* ap, long sa, long n)
       cp[wn] ^= ap[0] << bn;
    }
 }
-
-long WV_BlockConstructAlloc(WordVector& x, long d, long n)
-{
-   long nwords, nbytes, AllocAmt, m, j; 
-   _ntl_ulong *p, *q;
-
-
-   /* check n value */
-
-   if (n <= 0)
-      LogicError("block construct: n must be positive");
-
-   /* check d value */
-
-   if (d <= 0) 
-      LogicError("block construct: d must be positive");
-
-   if (NTL_OVERFLOW(d, NTL_BITS_PER_LONG, 0) || 
-       NTL_OVERFLOW(d, sizeof(_ntl_ulong), 2*sizeof(_ntl_ulong)))
-      ResourceError("block construct: d too large");
-
-   nwords = d + 2;
-   nbytes = nwords*sizeof(_ntl_ulong);
-   
-   AllocAmt = (NTL_MAX_ALLOC_BLOCK - sizeof(_ntl_ulong)) / nbytes;
-   if (AllocAmt == 0) AllocAmt = 1;
-
-   if (AllocAmt < n)
-      m = AllocAmt;
-   else
-      m = n;
-
-   p = (_ntl_ulong *) NTL_MALLOC(m, nbytes, sizeof(_ntl_ulong));
-   if (!p) MemoryError();
-
-   *p = m;
-
-   q = p+3;
-   x.rep = q;
-   
-   for (j = 0; j < m; j++) {
-      q[-2] = (d << 1) | 1;
-      q[-1] = 0;
-      q += nwords;
-   }
-
-   return m;
-}
-
-void WV_BlockConstructSet(WordVector& x, WordVector& y, long i)
-{
-   long d, size;
- 
-   d = x.rep[-2] >> 1;
-   size = d + 2;
- 
-   y.rep = x.rep + i*size;
-}
-
-long WV_BlockDestroy(WordVector& x)
-{
-   long m;
-   _ntl_ulong *p;
- 
-   p = x.rep - 3;
-   m = (long) *p;
-   free(p);
-   return m;
-}
-
-long WV_storage(long d)
-{
-   return (d + 2)*sizeof(_ntl_ulong) + sizeof(WordVector);
-}
-
-
-
 
 NTL_END_IMPL

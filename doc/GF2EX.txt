@@ -21,9 +21,6 @@ public:
    GF2EX(); // initial value 0
 
    GF2EX(const GF2EX& a); // copy
-   explicit GF2EX(const GF2E& a);  // promotion
-   explicit GF2EX(GF2 a); 
-   explicit GF2EX(long a); 
 
    GF2EX& operator=(const GF2EX& a); // assignment
    GF2EX& operator=(const GF2E& a);
@@ -32,107 +29,12 @@ public:
 
    ~GF2EX(); // destructor
 
-   GF2EX(INIT_MONO_TYPE, long i, const GF2E& c); 
-   GF2EX(INIT_MONO_TYPE, long i, GF2 c); 
-   GF2EX(INIT_MONO_TYPE, long i, long c); 
-   // initialize to c*X^i, invoke as GF2EX(INIT_MONO, i)
+   GF2EX(long i, const GF2E& c); // initilaize to X^i*c
+   GF2EX(long i, GF2 c); 
+   GF2EX(long i, long c); 
 
-   GF2EX(INIT_MONO_TYPE, long i); 
-   // initialize to X^i, invoke as GF2EX(INIT_MONO, i)
-
-
-
-
-   // typedefs to aid in generic programming
-
-   typedef GF2E coeff_type;
-   typedef GF2EXModulus modulus_type;
-   // ...
-
+   
 };
-
-
-
-
-
-/**************************************************************************\
-
-                              Accessing coefficients
-
-The degree of a polynomial f is obtained as deg(f),
-where the zero polynomial, by definition, has degree -1.
-
-A polynomial f is represented as a coefficient vector.
-Coefficients may be accesses in one of two ways.
-
-The safe, high-level method is to call the function
-coeff(f, i) to get the coefficient of X^i in the polynomial f,
-and to call the function SetCoeff(f, i, a) to set the coefficient
-of X^i in f to the scalar a.
-
-One can also access the coefficients more directly via a lower level 
-interface.  The coefficient of X^i in f may be accessed using 
-subscript notation f[i].  In addition, one may write f.SetLength(n)
-to set the length of the underlying coefficient vector to n,
-and f.SetMaxLength(n) to allocate space for n coefficients,
-without changing the coefficient vector itself.
-
-After setting coefficients using this low-level interface,
-one must ensure that leading zeros in the coefficient vector
-are stripped afterwards by calling the function f.normalize().
-
-NOTE: the coefficient vector of f may also be accessed directly
-as f.rep; however, this is not recommended. Also, for a properly
-normalized polynomial f, we have f.rep.length() == deg(f)+1,
-and deg(f) >= 0  =>  f.rep[deg(f)] != 0.
-
-\**************************************************************************/
-
-
-
-long deg(const GF2EX& a);  // return deg(a); deg(0) == -1.
-
-const GF2E& coeff(const GF2EX& a, long i);
-// returns the coefficient of X^i, or zero if i not in range
-
-const GF2E& LeadCoeff(const GF2EX& a);
-// returns leading term of a, or zero if a == 0
-
-const GF2E& ConstTerm(const GF2EX& a);
-// returns constant term of a, or zero if a == 0
-
-void SetCoeff(GF2EX& x, long i, const GF2E& a);
-void SetCoeff(GF2EX& x, long i, GF2 a);
-void SetCoeff(GF2EX& x, long i, long a);
-// makes coefficient of X^i equal to a; error is raised if i < 0
-
-void SetCoeff(GF2EX& x, long i);
-// makes coefficient of X^i equal to 1;  error is raised if i < 0
-
-void SetX(GF2EX& x); // x is set to the monomial X
-
-long IsX(const GF2EX& a); // test if x = X
-
-
-
-
-GF2E& GF2EX::operator[](long i); 
-const GF2E& GF2EX::operator[](long i) const;
-// indexing operators: f[i] is the coefficient of X^i ---
-// i should satsify i >= 0 and i <= deg(f).
-// No range checking (unless NTL_RANGE_CHECK is defined).
-
-void GF2EX::SetLength(long n);
-// f.SetLength(n) sets the length of the inderlying coefficient
-// vector to n --- after this call, indexing f[i] for i = 0..n-1
-// is valid.
-
-void GF2EX::normalize();  
-// f.normalize() strips leading zeros from coefficient vector of f
-
-void GF2EX::SetMaxLength(long n);
-// f.SetMaxLength(n) pre-allocate spaces for n coefficients.  The
-// polynomial that f represents is unchanged.
 
 
 
@@ -341,6 +243,29 @@ ostream& operator<<(ostream& s, const GF2EX& a);
 
 \**************************************************************************/
 
+long deg(const GF2EX& a);  // return deg(a); deg(0) == -1.
+
+const GF2E& coeff(const GF2EX& a, long i);
+// returns a read-only reference to the coefficient of X^i, or zero if
+// i not in range
+
+const GF2E& LeadCoeff(const GF2EX& a);
+// read-only reference to leading term of a, or zero if a == 0
+
+const GF2E& ConstTerm(const GF2EX& a);
+// read-only reference to constant term of a, or zero if a == 0
+
+void SetCoeff(GF2EX& x, long i, const GF2E& a);
+void SetCoeff(GF2EX& x, long i, GF2 a);
+void SetCoeff(GF2EX& x, long i, long a);
+// makes coefficient of X^i equal to a;  error is raised if i < 0
+
+void SetCoeff(GF2EX& x, long i);
+// makes coefficient of X^i equal to 1;  error is raised if i < 0
+
+void SetX(GF2EX& x); // x is set to the monomial X
+
+long IsX(const GF2EX& a); // test if x = X
 
 void diff(GF2EX& x, const GF2EX& a); // x = derivative of a
 GF2EX diff(const GF2EX& a); 
@@ -572,7 +497,14 @@ GF2EX& operator%=(GF2EX& x, const GF2EXModulus& F);
 
 \**************************************************************************/
 
-typedef Vec<GF2EX> vec_GF2EX; // backward compatibility
+NTL_vector_decl(GF2EX,vec_GF2EX)
+// vec_GF2EX
+
+NTL_eq_vector_decl(GF2EX,vec_GF2EX)
+// == and !=
+
+NTL_io_vector_decl(GF2EX,vec_GF2EX)
+// I/O operators
 
 
 
@@ -859,6 +791,14 @@ GF2E resultant(const GF2EX& a, const GF2EX& b);
 
                            Miscellany
 
+A GF2EX f is represented as a vec_GF2E, which can be accessed as
+f.rep.  The constant term is f.rep[0] and the leading coefficient is
+f.rep[f.rep.length()-1], except if f is zero, in which case
+f.rep.length() == 0.  Note that the leading coefficient is always
+nonzero (unless f is zero).  One can freely access and modify f.rep,
+but one should always ensure that the leading coefficient is nonzero,
+which can be done by invoking f.normalize().
+
 
 \**************************************************************************/
 
@@ -866,6 +806,12 @@ GF2E resultant(const GF2EX& a, const GF2EX& b);
 void clear(GF2EX& x) // x = 0
 void set(GF2EX& x); // x = 1
 
+void GF2EX::normalize();  
+// f.normalize() strips leading zeros from f.rep.
+
+void GF2EX::SetMaxLength(long n);
+// f.SetMaxLength(n) pre-allocate spaces for n coefficients.  The
+// polynomial that f represents is unchanged.
 
 void GF2EX::kill();
 // f.kill() sets f to 0 and frees all memory held by f.  Equivalent to
@@ -878,12 +824,6 @@ GF2EX::GF2EX(INIT_SIZE_TYPE, long n);
 static const GF2EX& zero();
 // GF2EX::zero() is a read-only reference to 0
 
-void GF2EX::swap(GF2EX& x);
 void swap(GF2EX& x, GF2EX& y); 
-// swap (via "pointer swapping")
-
-GF2EX::GF2EX(long i, const GF2E& c); 
-GF2EX::GF2EX(long i, GF2 c); 
-GF2EX::GF2EX(long i, long c); 
-// initialize to X^i*c, provided for backward compatibility
+// swap x and y (via "pointer swapping")
 

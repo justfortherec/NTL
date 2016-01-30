@@ -8,13 +8,134 @@
 NTL_START_IMPL
 
 
+mat_GF2::mat_GF2(const mat_GF2& a)  
+{  
+   _mat_GF2__numcols = 0;  
+   SetDims(a.NumRows(), a.NumCols());  
+   _mat_GF2__rep = a._mat_GF2__rep;  
+}  
+  
+mat_GF2& mat_GF2::operator=(const mat_GF2& a)  
+{  
+   SetDims(a.NumRows(), a.NumCols());  
+   _mat_GF2__rep = a._mat_GF2__rep;  
+   return *this;
+}  
+  
+  
+mat_GF2::mat_GF2(INIT_SIZE_TYPE, long n, long m)  
+{  
+   _mat_GF2__numcols = 0;  
+   SetDims(n, m);  
+}  
+  
+void mat_GF2::kill()  
+{  
+   _mat_GF2__numcols = 0;  
+   _mat_GF2__rep.kill();  
+}  
+  
+void mat_GF2::SetDims(long n, long m)  
+{  
+   if (n < 0 || m < 0)  
+      Error("SetDims: bad args");  
+  
+   if (m != _mat_GF2__numcols) {  
+      _mat_GF2__rep.kill();  
+      _mat_GF2__numcols = m;  
+   }  
+        
+   long oldmax = _mat_GF2__rep.MaxLength();  
+   long i;  
+   _mat_GF2__rep.SetLength(n);  
+  
+   for (i = oldmax; i < n; i++)  
+      _mat_GF2__rep[i].FixLength(m);  
+}  
+     
+        
+void conv(mat_GF2& x, const vec_vec_GF2& a)  
+{  
+   long n = a.length();  
+  
+   if (n == 0) {  
+      x.SetDims(0, 0);  
+      return;  
+   }  
+  
+   long m = a[0].length();  
+   long i;  
+  
+   for (i = 1; i < n; i++)  
+      if (a[i].length() != m)  
+         Error("nonrectangular matrix");  
+  
+   x.SetDims(n, m);  
+   for (i = 0; i < n; i++)  
+      x[i] = a[i];  
+}  
+  
+void swap(mat_GF2& X, mat_GF2& Y)  
+{  
+   swap(X._mat_GF2__numcols, Y._mat_GF2__numcols);  
+   swap(X._mat_GF2__rep, Y._mat_GF2__rep);  
+}  
+  
+
+
+long operator==(const mat_GF2& a, const mat_GF2& b)  
+{  
+   if (a.NumCols() != b.NumCols())  
+      return 0;  
+  
+   if (a.NumRows() != b.NumRows())  
+      return 0;  
+  
+   long n = a.NumRows();  
+   long i;  
+  
+   for (i = 0; i < n; i++)  
+      if (a[i] != b[i])  
+         return 0;  
+  
+   return 1;  
+}  
+  
+  
+long operator!=(const mat_GF2& a, const mat_GF2& b)  
+{  
+   return !(a == b);  
+}  
+
+istream& operator>>(istream& s, mat_GF2& x)  
+{  
+   vec_vec_GF2 buf;  
+   s >> buf;  
+   conv(x, buf);  
+   return s;  
+}  
+  
+ostream& operator<<(ostream& s, const mat_GF2& a)  
+{  
+   long n = a.NumRows();  
+   long i;  
+   s << "[";  
+   for (i = 0; i < n; i++) {
+      s << a[i];  
+      s << "\n";
+   }
+   s << "]";  
+   return s;  
+}  
+
+
 void add(mat_GF2& X, const mat_GF2& A, const mat_GF2& B)  
 {  
    long n = A.NumRows();  
    long m = A.NumCols();  
   
    if (B.NumRows() != n || B.NumCols() != m)   
-      LogicError("matrix add: dimension mismatch");  
+      Error("matrix add: dimension mismatch");  
   
    X.SetDims(n, m);  
 
@@ -38,7 +159,7 @@ void mul_aux(vec_GF2& x, const mat_GF2& A, const vec_GF2& b)
    long l = A.NumCols();  
   
    if (l != b.length())  
-      LogicError("matrix mul: dimension mismatch");  
+      Error("matrix mul: dimension mismatch");  
   
    x.SetLength(n);  
   
@@ -52,7 +173,7 @@ void mul_aux(vec_GF2& x, const mat_GF2& A, const vec_GF2& b)
   
 void mul(vec_GF2& x, const mat_GF2& A, const vec_GF2& b)  
 {  
-   if (&b == &x || A.position1(x) != -1) {
+   if (&b == &x || A.position(b) != -1) {
       vec_GF2 tmp;
       mul_aux(tmp, A, b);
       x = tmp;
@@ -68,7 +189,7 @@ void mul_aux(vec_GF2& x, const vec_GF2& a, const mat_GF2& B)
    long l = B.NumCols();  
   
    if (n != a.length())  
-      LogicError("matrix mul: dimension mismatch");  
+      Error("matrix mul: dimension mismatch");  
   
    x.SetLength(l);  
    clear(x);
@@ -99,7 +220,7 @@ void mul_aux(vec_GF2& x, const vec_GF2& a, const mat_GF2& B)
 
 void mul(vec_GF2& x, const vec_GF2& a, const mat_GF2& B)
 {
-   if (&a == &x || B.position1(x) != -1) {
+   if (&a == &x || B.position(a) != -1) {
       vec_GF2 tmp;
       mul_aux(tmp, a, B);
       x = tmp;
@@ -115,7 +236,7 @@ void mul_aux(mat_GF2& X, const mat_GF2& A, const mat_GF2& B)
    long m = B.NumCols();  
   
    if (l != B.NumRows())  
-      LogicError("matrix mul: dimension mismatch");  
+      Error("matrix mul: dimension mismatch");  
   
    X.SetDims(n, m);  
   
@@ -152,7 +273,7 @@ void ident(mat_GF2& X, long n)
 } 
 
 
-void determinant(ref_GF2 d, const mat_GF2& M_in)
+void determinant(GF2& d, const mat_GF2& M_in)
 {
    long k, n;
    long i, j;
@@ -161,7 +282,7 @@ void determinant(ref_GF2 d, const mat_GF2& M_in)
    n = M_in.NumRows();
 
    if (M_in.NumCols() != n)
-      LogicError("determinant: nonsquare matrix");
+      Error("determinant: nonsquare matrix");
 
    if (n == 0) {
       set(d);
@@ -265,7 +386,7 @@ void AddToCol(mat_GF2& x, long j, const vec_GF2& a)
    long m = x.NumCols();
 
    if (a.length() != n || j < 0 || j >= m)
-      LogicError("AddToCol: bad args");
+      Error("AddToCol: bad args");
 
    long wj = j/NTL_BITS_PER_LONG;
    long bj = j - wj*NTL_BITS_PER_LONG;
@@ -315,15 +436,15 @@ void transpose(mat_GF2& X, const mat_GF2& A)
 
    
 
-void solve(ref_GF2 d, vec_GF2& X, const mat_GF2& A, const vec_GF2& b)
+void solve(GF2& d, vec_GF2& X, const mat_GF2& A, const vec_GF2& b)
 
 {
    long n = A.NumRows();
    if (A.NumCols() != n)
-      LogicError("solve: nonsquare matrix");
+      Error("solve: nonsquare matrix");
 
    if (b.length() != n)
-      LogicError("solve: dimension mismatch");
+      Error("solve: dimension mismatch");
 
    if (n == 0) {
       X.SetLength(0);
@@ -400,11 +521,11 @@ void solve(ref_GF2 d, vec_GF2& X, const mat_GF2& A, const vec_GF2& b)
 
 
 
-void inv(ref_GF2 d, mat_GF2& X, const mat_GF2& A)
+void inv(GF2& d, mat_GF2& X, const mat_GF2& A)
 {
    long n = A.NumRows();
    if (A.NumCols() != n)
-      LogicError("solve: nonsquare matrix");
+      Error("solve: nonsquare matrix");
 
    if (n == 0) {
       X.SetDims(0, 0);
@@ -505,7 +626,7 @@ long gauss(mat_GF2& M, long w)
    long m = M.NumCols();
 
    if (w < 0 || w > m)
-      LogicError("gauss: bad args");
+      Error("gauss: bad args");
 
    long wm = (m + NTL_BITS_PER_LONG - 1)/NTL_BITS_PER_LONG;
 
@@ -703,12 +824,12 @@ void inv(mat_GF2& X, const mat_GF2& A)
 {
    GF2 d;
    inv(d, X, A);
-   if (d == 0) ArithmeticError("inv: non-invertible matrix");
+   if (d == 0) Error("inv: non-invertible matrix");
 }
 
 void power(mat_GF2& X, const mat_GF2& A, const ZZ& e)
 {
-   if (A.NumRows() != A.NumCols()) LogicError("power: non-square matrix");
+   if (A.NumRows() != A.NumCols()) Error("power: non-square matrix");
 
    if (e == 0) {
       ident(X, A.NumRows());

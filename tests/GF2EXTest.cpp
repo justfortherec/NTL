@@ -77,17 +77,16 @@ int main()
    random(B, 512);
 
    double t;
-   long i;
 
    t = GetTime();
-   for (i = 0; i < 10; i++) PlainMul(C, A, B);
+   PlainMul(C, A, B);
    t = GetTime() - t;
-   cerr << "time for plain mul of degree 511 over GF(2^512): " << (t/10) << "s\n";
+   cerr << "time for plain mul of degree 511 over GF(2^512): " << t << "s\n";
 
    t = GetTime();
-   for (i = 0; i < 10; i++) mul(C1, A, B);
+   mul(C1, A, B);
    t = GetTime() - t;
-   cerr << "time for karatsuba mul of degree 511 over GF(2^512): " << (t/10) << "s\n";
+   cerr << "time for karatsuba mul of degree 511 over GF(2^512): " << t << "s\n";
 
    if (C != C1) {
       cerr << "GF2EXTest NOT OK\n";
@@ -112,14 +111,14 @@ int main()
    double t;
 
    t = GetTime();
-   for (i = 0; i < 10; i++) PlainMul(C, A, B);
+   PlainMul(C, A, B);
    t = GetTime() - t;
-   cerr << "time for plain mul of degree 511 over GF(2^16): " << (t/10) << "s\n";
+   cerr << "time for plain mul of degree 511 over GF(2^16): " << t << "s\n";
 
    t = GetTime();
-   for (i = 0; i < 10; i++) mul(C1, A, B);
+   mul(C1, A, B);
    t = GetTime() - t;
-   cerr << "time for karatsuba mul of degree 511 over GF(2^16): " << (t/10) << "s\n";
+   cerr << "time for karatsuba mul of degree 511 over GF(2^16): " << t << "s\n";
 
    if (C != C1) {
       cerr << "GF2EXTest NOT OK\n";

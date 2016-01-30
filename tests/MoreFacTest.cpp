@@ -49,13 +49,13 @@ int main()
       if (f != f1) {
          cerr << f << "\n";
          cerr << c << " " << factors << "\n";
-         TerminalError("FACTORIZATION INCORRECT (1) !!!");
+         Error("FACTORIZATION INCORRECT (1) !!!");
       }
 
       long nfacs1 = NumFacs(factors);
 
       if (nfacs1 != nfacs)
-         TerminalError("FACTORIZATION INCORRECT (2) !!!");
+         Error("FACTORIZATION INCORRECT (2) !!!");
    }
 
 

@@ -8,7 +8,7 @@ NTL_START_IMPL
 void CharPolyMod(ZZX& gg, const ZZX& a, const ZZX& f, long deterministic)
 {
    if (!IsOne(LeadCoeff(f)) || deg(f) < 1 || deg(a) >= deg(f))
-      LogicError("CharPolyMod: bad args");
+      Error("CharPolyMod: bad args");
 
 
    if (IsZero(a)) {

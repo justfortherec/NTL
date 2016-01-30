@@ -4,8 +4,6 @@
 #define NTL_GF2E__H
 
 #include <NTL/GF2X.h>
-#include <NTL/SmartPtr.h>
-#include <NTL/Lazy.h>
 
 NTL_OPEN_NNS
 
@@ -13,11 +11,11 @@ NTL_OPEN_NNS
 
 class GF2EInfoT {
 private:
-
    GF2EInfoT();                       // disabled
    GF2EInfoT(const GF2EInfoT&);   // disabled
    void operator=(const GF2EInfoT&);  // disabled
 public:
+   long ref_count;
 
    GF2EInfoT(const GF2X& NewP);
    ~GF2EInfoT() { }
@@ -28,36 +26,43 @@ public:
    long ModCross;
    long DivCross;
 
+   ZZ   _card;
+   long _card_init;
    long _card_exp;
-   Lazy<ZZ> _card;
 };
 
-NTL_THREAD_LOCAL
-extern SmartPtr<GF2EInfoT> GF2EInfo; // info for current modulus, initially null
+extern GF2EInfoT *GF2EInfo; // info for current modulus, initially null
+
 
 
 
 class GF2EContext {
 private:
-SmartPtr<GF2EInfoT> ptr;
+GF2EInfoT *ptr;
 
 public:
-
-GF2EContext() { }
-explicit GF2EContext(const GF2X& p) : ptr(MakeSmart<GF2EInfoT>(p)) { }
-
-// copy constructor, assignment, destructor: default
-
 void save();
 void restore() const;
+
+GF2EContext() { ptr = 0; }
+GF2EContext(const GF2X& p);
+
+GF2EContext(const GF2EContext&); 
+
+
+GF2EContext& operator=(const GF2EContext&); 
+
+
+~GF2EContext();
+
 
 };
 
 
 class GF2EBak {
 private:
-GF2EContext c;
-bool MustRestore;
+long MustRestore;
+GF2EInfoT *ptr;
 
 GF2EBak(const GF2EBak&); // disabled
 void operator=(const GF2EBak&); // disabled
@@ -66,7 +71,7 @@ public:
 void save();
 void restore();
 
-GF2EBak() : MustRestore(false) {  }
+GF2EBak() { MustRestore = 0; ptr = 0; }
 
 ~GF2EBak();
 
@@ -75,51 +80,28 @@ GF2EBak() : MustRestore(false) {  }
 
 
 
-class GF2EPush {
-private:
-GF2EBak bak;
-
-GF2EPush(const GF2EPush&); // disabled
-void operator=(const GF2EPush&); // disabled
-
-public:
-GF2EPush() { bak.save(); }
-explicit GF2EPush(const GF2EContext& context) { bak.save(); context.restore(); }
-explicit GF2EPush(const GF2X& p) { bak.save(); GF2EContext c(p); c.restore(); }
+struct GF2E_NoAlloc_type { GF2E_NoAlloc_type() { } };
+const GF2E_NoAlloc_type GF2E_NoAlloc = GF2E_NoAlloc_type();
 
 
-};
-
-
-
-
-class GF2EX; // forward declaration
 
 class GF2E {
-public:
-typedef GF2X rep_type;
-typedef GF2EContext context_type;
-typedef GF2EBak bak_type;
-typedef GF2EPush push_type;
-typedef GF2EX poly_type;
 
+public:
 
 GF2X _GF2E__rep;
 
 
 // ****** constructors and assignment
 
-GF2E() {  } // NO_ALLOC
-GF2E(const GF2E& a)  {  _GF2E__rep = a._GF2E__rep; } // NO_ALLOC
-
-explicit GF2E(long a) { *this = a;  } // NO_ALLOC
-explicit GF2E(GF2 a) { *this = a;  } // NO_ALLOC
+GF2E() { _GF2E__rep.xrep.SetMaxLength(GF2E::WordLength()); }
 
 GF2E(GF2E& x, INIT_TRANS_TYPE) : _GF2E__rep(x._GF2E__rep, INIT_TRANS) { }
 
-GF2E(INIT_NO_ALLOC_TYPE) { }  // allocates no space
-GF2E(INIT_ALLOC_TYPE) { _GF2E__rep.xrep.SetMaxLength(GF2E::WordLength());  }  // allocates space
-void allocate() { _GF2E__rep.xrep.SetMaxLength(GF2E::WordLength()); }
+GF2E(const GF2E& a)  
+   { _GF2E__rep.xrep.SetMaxLength(GF2E::WordLength()); _GF2E__rep = a._GF2E__rep; }
+
+GF2E(GF2E_NoAlloc_type) { }  // allocates no space
 
 ~GF2E() { } 
 
@@ -131,12 +113,7 @@ inline GF2E& operator=(GF2 a);
 // You can always access the _GF2E__representation directly...if you dare.
 GF2X& LoopHole() { return _GF2E__rep; }
 
-
-void swap(GF2E& y) { _GF2E__rep.swap(y._GF2E__rep); }
-
 static long WordLength() { return GF2EInfo->p.WordLength(); }
-
-static long storage() { return WV_storage(GF2E::WordLength()); }
 
 static const GF2XModulus& modulus() { return GF2EInfo->p; }
 
@@ -152,12 +129,11 @@ static const ZZ& cardinality();
 
 static void init(const GF2X& NewP);
 
-
 };
 
 
 
-// read-only access to GF2E representation
+// read-only access to _GF2E__representation
 inline const GF2X& rep(const GF2E& a) { return a._GF2E__rep; }
 
 inline void clear(GF2E& x)
@@ -171,7 +147,7 @@ inline void set(GF2E& x)
 inline void swap(GF2E& x, GF2E& y)
 // swap x and y
 
-   { x.swap(y); }
+   { swap(x._GF2E__rep, y._GF2E__rep); }
 
 // ****** addition
 
@@ -438,7 +414,7 @@ inline long operator!=(long a, const GF2E& b) { return !(a == b); }
 
 // ****** trace
 
-inline void trace(ref_GF2 x, const GF2E& a)
+inline void trace(GF2& x, const GF2E& a)
    { TraceMod(x, a._GF2E__rep, GF2E::modulus()); }
 inline GF2 trace(const GF2E& a)
    { return TraceMod(a._GF2E__rep, GF2E::modulus()); }
@@ -466,25 +442,6 @@ NTL_SNS istream& operator>>(NTL_SNS istream& s, GF2E& x);
 
 inline GF2E& GF2E::operator=(long a) { conv(*this, a); return *this; }
 inline GF2E& GF2E::operator=(GF2 a) { conv(*this, a); return *this; }
-
-
-/* additional legacy conversions for v6 conversion regime */
-
-inline void conv(GF2X& x, const GF2E& a) { x = rep(a); }
-inline void conv(GF2E& x, const GF2E& a) { x = a; }
-
-
-/* ------------------------------------- */
-
-
-// overload these functions for Vec<GF2E>.
-// They are defined in vec_GF2E.c
-void BlockConstruct(GF2E* p, long n);
-void BlockConstructFromVec(GF2E* p, long n, const GF2E* q);
-void BlockConstructFromObj(GF2E* p, long n, const GF2E& q);
-void BlockDestroy(GF2E* p, long n);
-
-
 
 NTL_CLOSE_NNS
 

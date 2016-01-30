@@ -22,10 +22,6 @@ public:
 
    ZZ_pEX(const ZZ_pEX& a); // copy
 
-   explicit ZZ_pEX(const ZZ_pE& a); // promotion
-   explicit ZZ_pEX(const ZZ_p& a); 
-   explicit ZZ_pEX(long a); 
-
    ZZ_pEX& operator=(const ZZ_pEX& a); // assignment
    ZZ_pEX& operator=(const ZZ_pE& a);
    ZZ_pEX& operator=(const ZZ_p& a);
@@ -33,107 +29,12 @@ public:
 
    ~ZZ_pEX(); // destructor
 
-   ZZ_pEX(INIT_MONO_TYPE, long i, const ZZ_pE& c); 
-   ZZ_pEX(INIT_MONO_TYPE, long i, const ZZ_p& c); 
-   ZZ_pEX(INIT_MONO_TYPE, long i, long c); 
-   // initialize to c*X^i, invoke as ZZ_pEX(INIT_MONO, i, c)
+   ZZ_pEX(long i, const ZZ_pE& c); // initilaize to X^i*c
+   ZZ_pEX(long i, const ZZ_p& c); 
+   ZZ_pEX(long i, long c); 
 
-   ZZ_pEX(INIT_MONO_TYPE, long i); 
-   // initialize to X^i, invoke as ZZ_pEX(INIT_MONO, i)
-
-   // typedefs to aid in generic programming
-   typedef ZZ_pE coeff_type;
-   typedef ZZ_pEXModulus modulus_type;
-
-   // ...
-
+   
 };
-
-
-
-
-/**************************************************************************\
-
-                              Accessing coefficients
-
-The degree of a polynomial f is obtained as deg(f),
-where the zero polynomial, by definition, has degree -1.
-
-A polynomial f is represented as a coefficient vector.
-Coefficients may be accesses in one of two ways.
-
-The safe, high-level method is to call the function
-coeff(f, i) to get the coefficient of X^i in the polynomial f,
-and to call the function SetCoeff(f, i, a) to set the coefficient
-of X^i in f to the scalar a.
-
-One can also access the coefficients more directly via a lower level 
-interface.  The coefficient of X^i in f may be accessed using 
-subscript notation f[i].  In addition, one may write f.SetLength(n)
-to set the length of the underlying coefficient vector to n,
-and f.SetMaxLength(n) to allocate space for n coefficients,
-without changing the coefficient vector itself.
-
-After setting coefficients using this low-level interface,
-one must ensure that leading zeros in the coefficient vector
-are stripped afterwards by calling the function f.normalize().
-
-NOTE: the coefficient vector of f may also be accessed directly
-as f.rep; however, this is not recommended. Also, for a properly
-normalized polynomial f, we have f.rep.length() == deg(f)+1,
-and deg(f) >= 0  =>  f.rep[deg(f)] != 0.
-
-\**************************************************************************/
-
-
-
-long deg(const ZZ_pEX& a);  // return deg(a); deg(0) == -1.
-
-const ZZ_pE& coeff(const ZZ_pEX& a, long i);
-// returns the coefficient of X^i, or zero if i not in range
-
-const ZZ_pE& LeadCoeff(const ZZ_pEX& a);
-// returns leading term of a, or zero if a == 0
-
-const ZZ_pE& ConstTerm(const ZZ_pEX& a);
-// returns constant term of a, or zero if a == 0
-
-void SetCoeff(ZZ_pEX& x, long i, const ZZ_pE& a);
-void SetCoeff(ZZ_pEX& x, long i, const ZZ_p& a);
-void SetCoeff(ZZ_pEX& x, long i, long a);
-// makes coefficient of X^i equal to a; error is raised if i < 0
-
-void SetCoeff(ZZ_pEX& x, long i);
-// makes coefficient of X^i equal to 1;  error is raised if i < 0
-
-void SetX(ZZ_pEX& x); // x is set to the monomial X
-
-long IsX(const ZZ_pEX& a); // test if x = X
-
-
-
-
-ZZ_pE& ZZ_pEX::operator[](long i); 
-const ZZ_pE& ZZ_pEX::operator[](long i) const;
-// indexing operators: f[i] is the coefficient of X^i ---
-// i should satsify i >= 0 and i <= deg(f).
-// No range checking (unless NTL_RANGE_CHECK is defined).
-
-void ZZ_pEX::SetLength(long n);
-// f.SetLength(n) sets the length of the inderlying coefficient
-// vector to n --- after this call, indexing f[i] for i = 0..n-1
-// is valid.
-
-void ZZ_pEX::normalize();  
-// f.normalize() strips leading zeros from coefficient vector of f
-
-void ZZ_pEX::SetMaxLength(long n);
-// f.SetMaxLength(n) pre-allocate spaces for n coefficients.  The
-// polynomial that f represents is unchanged.
-
-
-
-
 
 
 
@@ -342,6 +243,29 @@ ostream& operator<<(ostream& s, const ZZ_pEX& a);
 
 \**************************************************************************/
 
+long deg(const ZZ_pEX& a);  // return deg(a); deg(0) == -1.
+
+const ZZ_pE& coeff(const ZZ_pEX& a, long i);
+// returns a read-only reference to the coefficient of X^i, or zero if
+// i not in range
+
+const ZZ_pE& LeadCoeff(const ZZ_pEX& a);
+// read-only reference to leading term of a, or zero if a == 0
+
+const ZZ_pE& ConstTerm(const ZZ_pEX& a);
+// read-only reference to constant term of a, or zero if a == 0
+
+void SetCoeff(ZZ_pEX& x, long i, const ZZ_pE& a);
+void SetCoeff(ZZ_pEX& x, long i, const ZZ_p& a);
+void SetCoeff(ZZ_pEX& x, long i, long a);
+// makes coefficient of X^i equal to a;  error is raised if i < 0
+
+void SetCoeff(ZZ_pEX& x, long i);
+// makes coefficient of X^i equal to 1;  error is raised if i < 0
+
+void SetX(ZZ_pEX& x); // x is set to the monomial X
+
+long IsX(const ZZ_pEX& a); // test if x = X
 
 void diff(ZZ_pEX& x, const ZZ_pEX& a); // x = derivative of a
 ZZ_pEX diff(const ZZ_pEX& a); 
@@ -574,8 +498,14 @@ ZZ_pEX& operator%=(ZZ_pEX& x, const ZZ_pEXModulus& F);
 
 \**************************************************************************/
 
+NTL_vector_decl(ZZ_pEX,vec_ZZ_pEX)
+// vec_ZZ_pEX
 
-typedef Vec<ZZ_pEX> vec_ZZ_pEX; // backward compatibility
+NTL_eq_vector_decl(ZZ_pEX,vec_ZZ_pEX)
+// == and !=
+
+NTL_io_vector_decl(ZZ_pEX,vec_ZZ_pEX)
+// I/O operators
 
 
 
@@ -861,12 +791,27 @@ ZZ_pE resultant(const ZZ_pEX& a, const ZZ_pEX& b);
 
                            Miscellany
 
+A ZZ_pEX f is represented as a vec_ZZ_pE, which can be accessed as
+f.rep.  The constant term is f.rep[0] and the leading coefficient is
+f.rep[f.rep.length()-1], except if f is zero, in which case
+f.rep.length() == 0.  Note that the leading coefficient is always
+nonzero (unless f is zero).  One can freely access and modify f.rep,
+but one should always ensure that the leading coefficient is nonzero,
+which can be done by invoking f.normalize().
+
 
 \**************************************************************************/
 
 
 void clear(ZZ_pEX& x) // x = 0
 void set(ZZ_pEX& x); // x = 1
+
+void ZZ_pEX::normalize();  
+// f.normalize() strips leading zeros from f.rep.
+
+void ZZ_pEX::SetMaxLength(long n);
+// f.SetMaxLength(n) pre-allocate spaces for n coefficients.  The
+// polynomial that f represents is unchanged.
 
 void ZZ_pEX::kill();
 // f.kill() sets f to 0 and frees all memory held by f.  Equivalent to
@@ -879,12 +824,6 @@ ZZ_pEX::ZZ_pEX(INIT_SIZE_TYPE, long n);
 static const ZZ_pEX& zero();
 // ZZ_pEX::zero() is a read-only reference to 0
 
-void ZZ_pEX::swap(ZZ_pEX& x);
 void swap(ZZ_pEX& x, ZZ_pEX& y); 
-// swap (via "pointer swapping")
+// swap x and y (via "pointer swapping")
 
-
-ZZ_pEX::ZZ_pEX(long i, const ZZ_pE& c); 
-ZZ_pEX::ZZ_pEX(long i, const ZZ_p& c); 
-ZZ_pEX::ZZ_pEX(long i, long c); 
-// initialize to c*X^i, provided for backward compatibility

@@ -5,29 +5,22 @@
 
 NTL_START_IMPL
 
-SmartPtr<zz_pInfoT> Build_zz_pInfo(FFTPrimeInfo *info)
-{
-   return MakeSmart<zz_pInfoT>(INIT_FFT, info);
-}
-
-
 zz_pInfoT::zz_pInfoT(long NewP, long maxroot)
 {
-   if (maxroot < 0) LogicError("zz_pContext: maxroot may not be negative");
+   ref_count = 1;
 
-   if (NewP <= 1) LogicError("zz_pContext: p must be > 1");
-   if (NumBits(NewP) > NTL_SP_NBITS) ResourceError("zz_pContext: modulus too big");
+   if (NewP <= 1) Error("zz_pContext: p must be > 1");
+   if (NumBits(NewP) > NTL_SP_NBITS) Error("zz_pContext: modulus too big");
 
    ZZ P, B, M, M1, MinusM;
    long n, i;
    long q, t;
-   mulmod_t qinv;
 
    p = NewP;
-   pinv = PrepMulMod(p);
-   red_struct = sp_PrepRem(p);
 
-   p_info = 0;
+   pinv = 1/double(p);
+
+   index = -1;
 
    conv(P, p);
 
@@ -38,12 +31,12 @@ zz_pInfoT::zz_pInfoT(long NewP, long maxroot)
    n = 0;
    while (M <= B) {
       UseFFTPrime(n);
-      q = GetFFTPrime(n);
+      q = FFTPrime[n];
       n++;
       mul(M, M, q);
    }
 
-   if (n > 4) LogicError("zz_pInit: too many primes");
+   if (n > 4) Error("zz_pInit: too many primes");
 
    NumPrimes = n;
    PrimeCnt = n;
@@ -54,64 +47,46 @@ zz_pInfoT::zz_pInfoT(long NewP, long maxroot)
 
    negate(MinusM, M);
    MinusMModP = rem(MinusM, p);
-   MinusMModPpinv = PrepMulModPrecon(MinusMModP, p, pinv);
 
-   CoeffModP.SetLength(n);
-   CoeffModPpinv.SetLength(n);
-   x.SetLength(n);
-   u.SetLength(n);
-   uqinv.SetLength(n);
+   if (!(CoeffModP = (long *) malloc(n * (sizeof (long)))))
+      Error("out of space");
+
+   if (!(x = (double *) malloc(n * (sizeof (double)))))
+      Error("out of space");
+
+   if (!(u = (long *) malloc(n * (sizeof (long)))))
+      Error("out of space");
 
    for (i = 0; i < n; i++) {
-      q = GetFFTPrime(i);
-      qinv = GetFFTPrimeInv(i);
+      q = FFTPrime[i];
 
       div(M1, M, q);
       t = rem(M1, q);
       t = InvMod(t, q);
+      mul(M1, M1, t);
       CoeffModP[i] = rem(M1, p);
-      CoeffModPpinv[i] = PrepMulModPrecon(CoeffModP[i], p, pinv); 
       x[i] = ((double) t)/((double) q);
       u[i] = t;
-      uqinv[i] = PrepMulModPrecon(t, q, qinv);
    }
 }
 
-zz_pInfoT::zz_pInfoT(INIT_FFT_TYPE, FFTPrimeInfo *info)
+zz_pInfoT::zz_pInfoT(long Index)
 {
-   p = info->q;
-   pinv = info->qinv;
-   red_struct = sp_PrepRem(p);
+   ref_count = 1;
 
+   index = Index;
 
-   p_info = info;
+   if (index < 0)
+      Error("bad FFT prime index");
 
-   NumPrimes = 1;
-   PrimeCnt = 0;
+   // allows non-consecutive indices...I'm not sure why
+   while (NumFFTPrimes < index)
+      UseFFTPrime(NumFFTPrimes);
 
-   MaxRoot = CalcMaxRoot(p);
-}
+   UseFFTPrime(index);
 
-// FIXME: we could make bigtab an optional argument
-
-zz_pInfoT::zz_pInfoT(INIT_USER_FFT_TYPE, long q)
-{
-   long w;
-   if (!IsFFTPrime(q, w)) LogicError("invalid user supplied prime");
-
-   p = q;
-   pinv = PrepMulMod(p);
-   red_struct = sp_PrepRem(p);
-
-
-   p_info_owner.make();
-   p_info = p_info_owner.get();
-
-   bool bigtab = false;
-#ifdef NTL_FFT_BIGTAB
-   bigtab = true;
-#endif
-   InitFFTPrimeInfo(*p_info, q, w, bigtab); 
+   p = FFTPrime[index];
+   pinv = FFTPrimeInv[index];
 
    NumPrimes = 1;
    PrimeCnt = 0;
@@ -121,9 +96,46 @@ zz_pInfoT::zz_pInfoT(INIT_USER_FFT_TYPE, long q)
 
 
 
-NTL_THREAD_LOCAL SmartPtr<zz_pInfoT> zz_pInfo = 0;
+
+zz_pInfoT::~zz_pInfoT()
+{
+   if (index < 0) {
+      free(CoeffModP);
+      free(x);
+      free(u);
+   }
+}
 
 
+zz_pInfoT *zz_pInfo = 0;
+
+
+typedef zz_pInfoT *zz_pInfoPtr;
+
+static 
+void CopyPointer(zz_pInfoPtr& dst, zz_pInfoPtr src)
+{
+   if (src == dst) return;
+
+   if (dst) {
+      dst->ref_count--;
+
+      if (dst->ref_count < 0) 
+         Error("internal error: negative zz_pContext ref_count");
+
+      if (dst->ref_count == 0) delete dst;
+   }
+
+   if (src) {
+      src->ref_count++;
+
+      if (src->ref_count < 0) 
+         Error("internal error: zz_pContext ref_count overflow");
+   }
+
+   dst = src;
+}
+   
 
 void zz_p::init(long p, long maxroot)
 {
@@ -138,64 +150,92 @@ void zz_p::FFTInit(long index)
    c.restore();
 }
 
-void zz_p::UserFFTInit(long q)
+zz_pContext::zz_pContext(long p, long maxroot)
 {
-   zz_pContext c(INIT_USER_FFT, q);
-   c.restore();
+   ptr = NTL_NEW_OP zz_pInfoT(p, maxroot);
 }
-
-zz_pContext::zz_pContext(long p, long maxroot) : 
-   ptr(MakeSmart<zz_pInfoT>(p, maxroot)) 
-{ }
 
 zz_pContext::zz_pContext(INIT_FFT_TYPE, long index)
 {
-   if (index < 0)
-      LogicError("bad FFT prime index");
-
-   UseFFTPrime(index);
-
-   ptr =  FFTTables[index]->zz_p_context;
+   ptr = NTL_NEW_OP zz_pInfoT(index);
 }
 
-zz_pContext::zz_pContext(INIT_USER_FFT_TYPE, long q) :
-   ptr(MakeSmart<zz_pInfoT>(INIT_USER_FFT, q))
-{ }
+zz_pContext::zz_pContext(const zz_pContext& a)
+{
+   ptr = 0;
+   CopyPointer(ptr, a.ptr);
+}
 
+
+zz_pContext& zz_pContext::operator=(const zz_pContext& a)
+{
+   CopyPointer(ptr, a.ptr);
+   return *this;
+}
+
+
+zz_pContext::~zz_pContext()
+{
+   CopyPointer(ptr, 0);
+}
 
 void zz_pContext::save()
 {
-   ptr = zz_pInfo;
+   CopyPointer(ptr, zz_pInfo);
 }
 
 void zz_pContext::restore() const
 {
-   zz_pInfo = ptr;
+   CopyPointer(zz_pInfo, ptr);
 }
 
 
 
 zz_pBak::~zz_pBak()
 {
-   if (MustRestore) c.restore();
+   if (MustRestore)
+      CopyPointer(zz_pInfo, ptr);
+
+   CopyPointer(ptr, 0);
 }
 
 void zz_pBak::save()
 {
-   c.save();
-   MustRestore = true;
+   MustRestore = 1;
+   CopyPointer(ptr, zz_pInfo);
 }
 
 
 void zz_pBak::restore()
 {
-   c.restore();
-   MustRestore = false;
+   MustRestore = 0;
+   CopyPointer(zz_pInfo, ptr);
 }
 
 
 
 
+inline long reduce(long a, long p)
+{
+   if (a >= 0 && a < p)
+      return a;
+   else {
+      a = a % p;
+      if (a < 0) a += p;
+      return a;
+   }
+}
+
+
+zz_p to_zz_p(long a)
+{
+   return zz_p(reduce(a, zz_p::modulus()), INIT_LOOP_HOLE);
+}
+
+void conv(zz_p& x, long a)
+{
+   x._zz_p__rep = reduce(a, zz_p::modulus());
+}
 
 zz_p to_zz_p(const ZZ& a)
 {
@@ -210,8 +250,8 @@ void conv(zz_p& x, const ZZ& a)
 
 istream& operator>>(istream& s, zz_p& x)
 {
-   NTL_ZZRegister(y);
-   NTL_INPUT_CHECK_RET(s, s >> y);
+   static ZZ y;
+   s >> y;
    conv(x, y);
 
    return s;
@@ -219,7 +259,7 @@ istream& operator>>(istream& s, zz_p& x)
 
 ostream& operator<<(ostream& s, zz_p a)
 {
-   NTL_ZZRegister(y);
+   static ZZ y;
    y = rep(a);
    s << y;
 

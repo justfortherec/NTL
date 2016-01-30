@@ -8,7 +8,9 @@
 
 NTL_OPEN_NNS
 
-typedef Mat<ZZ_p> mat_ZZ_p;
+NTL_matrix_decl(ZZ_p,vec_ZZ_p,vec_vec_ZZ_p,mat_ZZ_p)
+NTL_io_matrix_decl(ZZ_p,vec_ZZ_p,vec_vec_ZZ_p,mat_ZZ_p)
+NTL_eq_matrix_decl(ZZ_p,vec_ZZ_p,vec_vec_ZZ_p,mat_ZZ_p)
 
 void add(mat_ZZ_p& X, const mat_ZZ_p& A, const mat_ZZ_p& B); 
 void sub(mat_ZZ_p& X, const mat_ZZ_p& A, const mat_ZZ_p& B); 

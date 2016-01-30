@@ -6,7 +6,11 @@
 
 NTL_OPEN_NNS
 
-typedef Vec<unsigned long> vec_ulong;
+NTL_vector_decl(_ntl_ulong,vec_ulong)
+
+NTL_io_vector_decl(_ntl_ulong,vec_ulong)
+
+NTL_eq_vector_decl(_ntl_ulong,vec_ulong)
 
 NTL_CLOSE_NNS
 

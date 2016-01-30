@@ -59,7 +59,7 @@ int main()
    long n, n1;
    int shamt = min(NTL_BITS_PER_LONG,2*NTL_DOUBLE_PRECISION);
 
-   n = to_long((1UL << (shamt-1)) - 1UL);
+   n = (1L << (shamt-1)) - 1;
    c = to_quad_float(n);
    n1 = to_long(c);
 
@@ -68,7 +68,7 @@ int main()
    else
       cout << "long conversion not OK\n";
 
-   n = to_long(1UL << (shamt-1));
+   n = (1L << (shamt-1));
    c = to_quad_float(n);
    n1 = to_long(c);
 
@@ -81,27 +81,26 @@ int main()
 
    {
 
-   unsigned long n;
-   ZZ n1;
-   int shamt = min(NTL_BITS_PER_LONG,2*NTL_DOUBLE_PRECISION);
+   int n, n1;
+   int shamt = min(NTL_BITS_PER_INT,2*NTL_DOUBLE_PRECISION);
 
-   n = (1UL << (shamt-1)) - 1UL;
+   n = (1 << (shamt-1)) - 1;
    c = to_quad_float(n);
-   n1 = to_ZZ(c);
+   n1 = to_long(c);
 
-   if (n1 == to_ZZ(n))
-      cout << "ulong conversion OK\n";
+   if (n1 == n)
+      cout << "int conversion OK\n";
    else
-      cout << "ulong conversion not OK\n";
+      cout << "int conversion not OK\n";
 
-   n = 1UL << (shamt-1);
+   n = (1 << (shamt-1));
    c = to_quad_float(n);
-   n1 = to_ZZ(c);
+   n1 = to_long(c);
 
-   if (n1 == to_ZZ(n))
-      cout << "ulong conversion OK\n";
+   if (n1 == n)
+      cout << "int conversion OK\n";
    else
-      cout << "ulong conversion not OK\n";
+      cout << "int conversion not OK\n";
 
    }
 

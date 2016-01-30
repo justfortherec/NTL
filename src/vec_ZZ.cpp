@@ -1,8 +1,16 @@
 
 #include <NTL/vec_ZZ.h>
 
+#include <NTL/new.h>
+
 NTL_START_IMPL
 
+
+NTL_vector_impl(ZZ,vec_ZZ)
+
+NTL_eq_vector_impl(ZZ,vec_ZZ)
+
+NTL_io_vector_impl(ZZ,vec_ZZ)
 
 void InnerProduct(ZZ& xx, const vec_ZZ& a, const vec_ZZ& b)
 {
@@ -42,7 +50,7 @@ void mul(vec_ZZ& x, const vec_ZZ& a, long b)
 void add(vec_ZZ& x, const vec_ZZ& a, const vec_ZZ& b)
 {
    long n = a.length();
-   if (b.length() != n) LogicError("vector add: dimension mismatch");
+   if (b.length() != n) Error("vector add: dimension mismatch");
 
    x.SetLength(n);
    long i;
@@ -53,7 +61,7 @@ void add(vec_ZZ& x, const vec_ZZ& a, const vec_ZZ& b)
 void sub(vec_ZZ& x, const vec_ZZ& a, const vec_ZZ& b)
 {
    long n = a.length();
-   if (b.length() != n) LogicError("vector sub: dimension mismatch");
+   if (b.length() != n) Error("vector sub: dimension mismatch");
    x.SetLength(n);
    long i;
    for (i = 0; i < n; i++)
@@ -124,8 +132,8 @@ ZZ operator*(const vec_ZZ& a, const vec_ZZ& b)
 
 void VectorCopy(vec_ZZ& x, const vec_ZZ& a, long n)
 {
-   if (n < 0) LogicError("VectorCopy: negative length");
-   if (NTL_OVERFLOW(n, 1, 0)) ResourceError("overflow in VectorCopy");
+   if (n < 0) Error("VectorCopy: negative length");
+   if (n >= (1L << (NTL_BITS_PER_LONG-4))) Error("overflow in VectorCopy");
 
    long m = min(n, a.length());
 

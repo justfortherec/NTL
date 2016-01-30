@@ -8,14 +8,13 @@ NTL_START_IMPL
 
 static void ExactDiv(ZZ& qq, const ZZ& a, const ZZ& b)
 {
-   NTL_ZZRegister(q);
-   NTL_ZZRegister(r);
+   static ZZ q, r;
 
    DivRem(q, r, a, b);
    if (!IsZero(r)) {
       cerr << "a = " << a << "\n";
       cerr << "b = " << b << "\n";
-      LogicError("ExactDiv: nonzero remainder");
+      Error("ExactDiv: nonzero remainder");
    }
    qq = q;
 }
@@ -27,7 +26,7 @@ static void BalDiv(ZZ& q, const ZZ& a, const ZZ& d)
 //    by rounding towards zero.  Assumes d > 0.
 
 {
-   NTL_ZZRegister(r);
+   static ZZ r;
    DivRem(q, r, a, d);
 
 
@@ -46,8 +45,7 @@ static void MulAddDiv(ZZ& c, const ZZ& c1, const ZZ& c2,
 // c = (x*c1 + y*c2)/z
 
 {
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
+   static ZZ t1, t2;
 
    mul(t1, x, c1);
    mul(t2, y, c2);
@@ -62,8 +60,7 @@ static void MulSubDiv(ZZ& c, const ZZ& c1, const ZZ& c2,
 // c = (x*c1 - y*c2)/z
 
 {
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
+   static ZZ t1, t2;
 
    mul(t1, x, c1);
    mul(t2, y, c2);
@@ -84,7 +81,7 @@ static void MulSubDiv(vec_ZZ& c, const vec_ZZ& c1, const vec_ZZ& c2,
 
 {
    long n = c1.length();
-   if (c2.length() != n) LogicError("MulSubDiv: length mismatch");
+   if (c2.length() != n) Error("MulSubDiv: length mismatch");
    c.SetLength(n);
 
    long i;
@@ -101,11 +98,8 @@ static void RowTransform(vec_ZZ& c1, vec_ZZ& c2,
 
 {
    long n = c1.length();
-   if (c2.length() != n) LogicError("MulSubDiv: length mismatch");
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
-   NTL_ZZRegister(t3);
-   NTL_ZZRegister(t4);
+   if (c2.length() != n) Error("MulSubDiv: length mismatch");
+   static ZZ t1, t2, t3, t4;
 
    long i;
    for (i = 1; i <= n; i++) {
@@ -128,10 +122,7 @@ static void RowTransform(ZZ& c1, ZZ& c2,
 // (c1, c2) = (x*c1 + y*c2, u*c1 + v*c2)
 
 {
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
-   NTL_ZZRegister(t3);
-   NTL_ZZRegister(t4);
+   static ZZ t1, t2, t3, t4;
 
    mul(t1, x, c1);
    mul(t2, y, c2);
@@ -147,30 +138,31 @@ static void RowTransform(ZZ& c1, ZZ& c2,
 
 
 
-static void MulSubFrom(vec_ZZ& c, const vec_ZZ& c2, const ZZ& x)
+static void MulSub(ZZ& c, const ZZ& c1, const ZZ& c2, const ZZ& x)
 
-// c = c - x*c2
+// c = c1 - x*c2
 
 {
-   long n = c.length();
-   if (c2.length() != n) LogicError("MulSubFrom: length mismatch");
+   static ZZ t1;
 
-   long i;
-   for (i = 1; i <= n; i++)
-      MulSubFrom(c(i), c2(i), x);
+   mul(t1, x, c2);
+   sub(c, c1, t1);
 }
 
-static void MulSubFrom(vec_ZZ& c, const vec_ZZ& c2, long x)
 
-// c = c - x*c2
+static void MulSub(vec_ZZ& c, const vec_ZZ& c1, const vec_ZZ& c2,
+                   const ZZ& x)
+
+// c = c1 - x*c2
 
 {
-   long n = c.length();
-   if (c2.length() != n) LogicError("MulSubFrom: length mismatch");
+   long n = c1.length();
+   if (c2.length() != n) Error("MulSub: length mismatch");
+   c.SetLength(n);
 
    long i;
    for (i = 1; i <= n; i++)
-      MulSubFrom(c(i), c2(i), x);
+      MulSub(c(i), c1(i), c2(i), x);
 }
 
 
@@ -183,8 +175,7 @@ static long SwapTest(const ZZ& d0, const ZZ& d1, const ZZ& d2, const ZZ& lam,
 // test if a*d1^2 > b*(d0*d2 + lam^2)
 
 {
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
+   static ZZ t1, t2;
 
    mul(t1, d0, d2);
    sqr(t2, lam);
@@ -207,8 +198,8 @@ void reduce(long k, long l,
             mat_ZZ& B, vec_long& P, vec_ZZ& D, 
             vec_vec_ZZ& lam, mat_ZZ* U)
 {
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(r);
+   static ZZ t1;
+   static ZZ r;
 
    if (P(l) == 0) return;
    add(t1, lam(k)(P(l)), lam(k)(P(l)));
@@ -216,40 +207,17 @@ void reduce(long k, long l,
    if (t1 <= D[P(l)]) return;
 
    long j;
-   long rr, small_r;
 
    BalDiv(r, lam(k)(P(l)), D[P(l)]);
+   MulSub(B(k), B(k), B(l), r);
 
-   if (r.WideSinglePrecision()) {
-      small_r = 1;
-      rr = to_long(r);
-   }
-   else {
-      small_r = 0;
-   }
-      
-   if (small_r) {
-      MulSubFrom(B(k), B(l), rr);
+   if (U) MulSub((*U)(k), (*U)(k), (*U)(l), r);
 
-      if (U) MulSubFrom((*U)(k), (*U)(l), rr);
+   for (j = 1; j <= l-1; j++)
+      if (P(j) != 0)
+         MulSub(lam(k)(P(j)), lam(k)(P(j)), lam(l)(P(j)), r);
 
-      for (j = 1; j <= l-1; j++)
-         if (P(j) != 0)
-            MulSubFrom(lam(k)(P(j)), lam(l)(P(j)), rr);
-      MulSubFrom(lam(k)(P(l)), D[P(l)], rr);
-   }
-   else {
-      MulSubFrom(B(k), B(l), r);
-
-      if (U) MulSubFrom((*U)(k), (*U)(l), r);
-
-      for (j = 1; j <= l-1; j++)
-         if (P(j) != 0)
-            MulSubFrom(lam(k)(P(j)), lam(l)(P(j)), r);
-      MulSubFrom(lam(k)(P(l)), D[P(l)], r);
-   }
-
-
+   MulSub(lam(k)(P(l)), lam(k)(P(l)), D[P(l)], r);
 }
 
 
@@ -263,12 +231,7 @@ long swap(long k, mat_ZZ& B, vec_long& P, vec_ZZ& D,
 
 {
    long i, j;
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
-   NTL_ZZRegister(t3);
-   NTL_ZZRegister(e);
-   NTL_ZZRegister(x);
-   NTL_ZZRegister(y);
+   static ZZ t1, t2, t3, e, x, y;
 
 
    if (P(k) != 0) {
@@ -355,9 +318,7 @@ void IncrementalGS(mat_ZZ& B, vec_long& P, vec_ZZ& D, vec_vec_ZZ& lam,
    long n = B.NumCols();
    long m = B.NumRows();
 
-   NTL_ZZRegister(u);
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
+   static ZZ u, t1, t2;
 
    long i, j;
 
@@ -398,7 +359,7 @@ void IncrementalGS(mat_ZZ& B, vec_long& P, vec_ZZ& D, vec_vec_ZZ& lam,
 
 
 static
-long LLL(vec_ZZ& D, mat_ZZ& B, mat_ZZ* U, long a, long b, long verbose)
+long LLL(ZZ& det, mat_ZZ& B, mat_ZZ* U, long a, long b, long verbose)
 {
    long m = B.NumRows();
    long n = B.NumCols();
@@ -408,6 +369,7 @@ long LLL(vec_ZZ& D, mat_ZZ& B, mat_ZZ* U, long a, long b, long verbose)
    vec_long P;
    P.SetLength(m);
 
+   vec_ZZ D;
    D.SetLength(m+1);
    D[0] = 1;
 
@@ -455,10 +417,9 @@ long LLL(vec_ZZ& D, mat_ZZ& B, mat_ZZ* U, long a, long b, long verbose)
       }
    }
 
-   D.SetLength(s+1);
+   det = D[s];
    return s;
 }
-
 
 
 static
@@ -524,83 +485,26 @@ long image(ZZ& det, mat_ZZ& B, mat_ZZ* U, long verbose)
 
 long LLL(ZZ& det, mat_ZZ& B, mat_ZZ& U, long verbose)
 {
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, &U, 3, 4, verbose);
-   det = D[s];
-   return s;
+   return LLL(det, B, &U, 3, 4, verbose);
 }
 
 long LLL(ZZ& det, mat_ZZ& B, long verbose)
 {
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, 0, 3, 4, verbose);
-   det = D[s];
-   return s;
+   return LLL(det, B, 0, 3, 4, verbose);
 }
 
 long LLL(ZZ& det, mat_ZZ& B, mat_ZZ& U, long a, long b, long verbose)
 {
-   if (a <= 0 || b <= 0 || a > b || b/4 >= a) LogicError("LLL: bad args");
-
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, &U, a, b, verbose);
-   det = D[s];
-   return s;
+   if (a <= 0 || b <= 0 || a > b || b/4 >= a) Error("LLL: bad args");
+   
+   return LLL(det, B, &U, a, b, verbose);
 }
 
 long LLL(ZZ& det, mat_ZZ& B, long a, long b, long verbose)
 {
-   if (a <= 0 || b <= 0 || a > b || b/4 >= a) LogicError("LLL: bad args");
+   if (a <= 0 || b <= 0 || a > b || b/4 >= a) Error("LLL: bad args");
 
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, 0, a, b, verbose);
-   det = D[s];
-   return s;
-}
-
-
-long LLL_plus(vec_ZZ& D_out, mat_ZZ& B, mat_ZZ& U, long verbose)
-{
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, &U, 3, 4, verbose);
-   D_out = D;
-   return s;
-}
-
-long LLL_plus(vec_ZZ& D_out, mat_ZZ& B, long verbose)
-{
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, 0, 3, 4, verbose);
-   D_out = D;
-   return s;
-}
-
-long LLL_plus(vec_ZZ& D_out, mat_ZZ& B, mat_ZZ& U, long a, long b, long verbose)
-{
-   if (a <= 0 || b <= 0 || a > b || b/4 >= a) LogicError("LLL_plus: bad args");
-
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, &U, a, b, verbose);
-   D_out = D;
-   return s;
-}
-
-long LLL_plus(vec_ZZ& D_out, mat_ZZ& B, long a, long b, long verbose)
-{
-   if (a <= 0 || b <= 0 || a > b || b/4 >= a) LogicError("LLL_plus: bad args");
-
-   vec_ZZ D;
-   long s;
-   s = LLL(D, B, 0, a, b, verbose);
-   D_out = D;
-   return s;
+   return LLL(det, B, 0, a, b, verbose);
 }
 
 
@@ -620,10 +524,10 @@ long LatticeSolve(vec_ZZ& x, const mat_ZZ& A, const vec_ZZ& y, long reduce)
    long m = A.NumCols();
 
    if (y.length() != m)
-      LogicError("LatticeSolve: dimension mismatch");
+      Error("LatticeSolve: dimension mismatch");
 
    if (reduce < 0 || reduce > 2)
-      LogicError("LatticeSolve: bad reduce parameter");
+      Error("LatticeSolve: bad reduce parameter");
 
    if (IsZero(y)) {
       x.SetLength(n);

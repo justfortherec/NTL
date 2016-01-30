@@ -9,8 +9,13 @@ Defines the class vec_RR.
 
 \**************************************************************************/
 
+NTL_vector_decl(RR,vec_RR)
 
-typedef Vec<RR> vec_RR; // backward compatibility
+NTL_eq_vector_decl(RR,vec_RR)
+// == and !=
+
+NTL_io_vector_decl(RR,vec_RR)
+// I/O operators
 
 void mul(vec_RR& x, const vec_RR& a, const RR& b);
 void mul(vec_RR& x, const vec_RR& a, double b);

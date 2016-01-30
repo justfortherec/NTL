@@ -23,11 +23,11 @@ vec_ZZ rep;
 ****************************************************************/
 
 
-ZZX() { }
+ZZX()
 //  initial value 0
 
-explicit ZZX(long a) { *this = a; }
-explicit ZZX(const ZZ& a) { *this = a; }
+   { }
+
 
 ZZX(INIT_SIZE_TYPE, long n) 
 // initial value 0, but space is pre-allocated for n coefficients
@@ -58,24 +58,10 @@ void kill()
 
    { rep.kill(); }
 
-
-
-typedef ZZ coeff_type;
-void SetLength(long n) { rep.SetLength(n); }
-ZZ& operator[](long i) { return rep[i]; }
-const ZZ& operator[](long i) const { return rep[i]; }
-
-
-
-
 static const ZZX& zero();
 
 inline ZZX(long i, const ZZ& c);
 inline ZZX(long i, long c);
-
-inline ZZX(INIT_MONO_TYPE, long i, const ZZ& c);
-inline ZZX(INIT_MONO_TYPE, long i, long c);
-inline ZZX(INIT_MONO_TYPE, long i);
 
 
 inline ZZX& operator=(long a);
@@ -83,9 +69,6 @@ inline ZZX& operator=(const ZZ& a);
 
 
 ZZX(ZZX& x, INIT_TRANS_TYPE) : rep(x.rep, INIT_TRANS) { }
-
-void swap(ZZX& x) { rep.swap(x.rep); }
-// swap with x (only pointers are swapped)
 
 };
 
@@ -142,18 +125,15 @@ void SetCoeff(ZZX& x, long i, const ZZ& a);
 // x[i] = a, error is raised if i < 0
 
 void SetCoeff(ZZX& x, long i, long a);
-// x[i] = a, error is raised if i < 0
+
+inline ZZX::ZZX(long i, const ZZ& a)
+   { SetCoeff(*this, i, a); }
+
+inline ZZX::ZZX(long i, long a)
+   { SetCoeff(*this, i, a); }
 
 void SetCoeff(ZZX& x, long i);
 // x[i] = 1, error is raised if i < 0
-
-inline ZZX::ZZX(long i, const ZZ& a) { SetCoeff(*this, i, a); }
-inline ZZX::ZZX(long i, long a) { SetCoeff(*this, i, a); }
-
-inline ZZX::ZZX(INIT_MONO_TYPE, long i, const ZZ& a) { SetCoeff(*this, i, a); }
-inline ZZX::ZZX(INIT_MONO_TYPE, long i, long a) { SetCoeff(*this, i, a); }
-inline ZZX::ZZX(INIT_MONO_TYPE, long i) { SetCoeff(*this, i); }
-
 
 void SetX(ZZX& x);
 // x is set to the monomial X
@@ -174,7 +154,7 @@ inline void set(ZZX& x)
 inline void swap(ZZX& x, ZZX& y)
 // swap x & y (only pointers are swapped)
 
-   { x.swap(y); }
+   { swap(x.rep, y.rep); }
 
 void trunc(ZZX& x, const ZZX& a, long m);
 // x = a % X^m
@@ -301,20 +281,6 @@ inline ZZX to_ZZX(const ZZ_pX& a)
 void conv(ZZX& x, const zz_pX& a);
 inline ZZX to_ZZX(const zz_pX& a)
    { ZZX x; conv(x, a); NTL_OPT_RETURN(ZZX, x); }
-
-
-
-
-/* additional legacy conversions for v6 conversion regime */
-
-inline void conv(ZZX& x, const ZZX& a)
-   { x = a; }
-
-inline void conv(vec_ZZ& x, const ZZX& a)
-   { x = a.rep; }
-
-
-/* ------------------------------------- */
 
 
 
@@ -746,8 +712,13 @@ long CRT(ZZX& a, ZZ& prod, const ZZ_pX& A);
 
 
 
-typedef Vec<ZZX> vec_ZZX;
+// vectors
 
+NTL_vector_decl(ZZX,vec_ZZX)
+
+NTL_eq_vector_decl(ZZX,vec_ZZX)
+
+NTL_io_vector_decl(ZZX,vec_ZZX)
 
 NTL_CLOSE_NNS
 

@@ -4,7 +4,6 @@
 
 #include <NTL/lzz_pEX.h>
 #include <NTL/vec_vec_lzz_p.h>
-#include <NTL/ZZX.h>
 
 #include <NTL/new.h>
 
@@ -13,14 +12,14 @@ NTL_START_IMPL
 
 const zz_pEX& zz_pEX::zero()
 {
-   NTL_THREAD_LOCAL static zz_pEX z;
+   static zz_pEX z;
    return z;
 }
 
 
 istream& operator>>(istream& s, zz_pEX& x)
 {
-   NTL_INPUT_CHECK_RET(s, s >> x.rep);
+   s >> x.rep;
    x.normalize();
    return s;
 }
@@ -38,8 +37,9 @@ void zz_pEX::normalize()
 
    n = rep.length();
    if (n == 0) return;
-   p = rep.elts() + n;
-   while (n > 0 && IsZero(*--p)) {
+   p = rep.elts() + (n-1);
+   while (n > 0 && IsZero(*p)) {
+      p--; 
       n--;
    }
    rep.SetLength(n);
@@ -107,35 +107,26 @@ long operator==(const zz_pEX& a, const zz_pE& b)
 
 
 
-
 void SetCoeff(zz_pEX& x, long i, const zz_pE& a)
 {
    long j, m;
 
    if (i < 0) 
-      LogicError("SetCoeff: negative index");
+      Error("SetCoeff: negative index");
 
-   if (NTL_OVERFLOW(i, 1, 0))
-      ResourceError("overflow in SetCoeff");
+   if (i >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in SetCoeff");
 
    m = deg(x);
 
-   if (i > m && IsZero(a)) return; 
-
    if (i > m) {
-      /* careful: a may alias a coefficient of x */
+      long pos = x.rep.position(a);
+      x.rep.SetLength(i+1);
 
-      long alloc = x.rep.allocated();
-
-      if (alloc > 0 && i >= alloc) {
-         zz_pE aa = a;
-         x.rep.SetLength(i+1);
-         x.rep[i] = aa;
-      }
-      else {
-         x.rep.SetLength(i+1);
+      if (pos != -1)
+         x.rep[i] = x.rep.RawGet(pos);
+      else
          x.rep[i] = a;
-      }
 
       for (j = m+1; j < i; j++)
          clear(x.rep[j]);
@@ -146,23 +137,20 @@ void SetCoeff(zz_pEX& x, long i, const zz_pE& a)
    x.normalize();
 }
 
-
 void SetCoeff(zz_pEX& x, long i, const zz_p& aa)
 {
    long j, m;
 
    if (i < 0)
-      LogicError("SetCoeff: negative index");
+      Error("SetCoeff: negative index");
 
-   if (NTL_OVERFLOW(i, 1, 0))
-      ResourceError("overflow in SetCoeff");
+   if (i >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in SetCoeff");
 
    NTL_zz_pRegister(a);  // watch out for aliases!
    a = aa;
 
    m = deg(x);
-
-   if (i > m && IsZero(a)) return; 
 
    if (i > m) {
       x.rep.SetLength(i+1);
@@ -191,10 +179,10 @@ void SetCoeff(zz_pEX& x, long i)
    long j, m;
 
    if (i < 0) 
-      LogicError("coefficient index out of range");
+      Error("coefficient index out of range");
 
-   if (NTL_OVERFLOW(i, 1, 0))
-      ResourceError("overflow in SetCoeff");
+   if (i >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in SetCoeff");
 
    m = deg(x);
 
@@ -310,27 +298,6 @@ void conv(zz_pEX& x, const vec_zz_pE& a)
    x.rep = a;
    x.normalize();
 }
-
-
-
-
-/* additional legacy conversions for v6 conversion regime */
-
-void conv(zz_pEX& x, const ZZX& a)
-{
-   long n = a.rep.length();
-   long i;
-
-   x.rep.SetLength(n);
-   for (i = 0; i < n; i++)
-      conv(x.rep[i], a.rep[i]);
-
-   x.normalize();
-}
-
-
-/* ------------------------------------- */
-
 
 
 void add(zz_pEX& x, const zz_pEX& a, const zz_pEX& b)
@@ -545,7 +512,7 @@ void sub(zz_pEX& x, const zz_pE& b, const zz_pEX& a)
    }
    else if (x.rep.MaxLength() == 0) {
       negate(x, a);
-      add(x.rep[0], x.rep[0], b);
+      add(x.rep[0], a.rep[0], b);
       x.normalize();
    }
    else {
@@ -612,8 +579,8 @@ void mul(zz_pEX& c, const zz_pEX& a, const zz_pEX& b)
    long n = zz_pE::degree();
    long n2 = 2*n-1;
 
-   if (NTL_OVERFLOW(da+db+1, n2, 0))
-      ResourceError("overflow in zz_pEX mul");
+   if (da+db+1 >= (1L << (NTL_BITS_PER_LONG-4))/n2)
+      Error("overflow in zz_pEX mul");
 
 
    long i, j;
@@ -749,8 +716,8 @@ void sqr(zz_pEX& c, const zz_pEX& a)
    long n = zz_pE::degree();
    long n2 = 2*n-1;
 
-   if (NTL_OVERFLOW(2*da+1, n2, 0))
-      ResourceError("overflow in zz_pEX sqr");
+   if (2*da+1 >= (1L << (NTL_BITS_PER_LONG-4))/n2)
+      Error("overflow in zz_pEX sqr");
 
    long i, j;
 
@@ -792,7 +759,7 @@ void sqr(zz_pEX& c, const zz_pEX& a)
 
 void MulTrunc(zz_pEX& x, const zz_pEX& a, const zz_pEX& b, long n)
 {
-   if (n < 0) LogicError("MulTrunc: bad args");
+   if (n < 0) Error("MulTrunc: bad args");
 
    zz_pEX t;
    mul(t, a, b);
@@ -801,7 +768,7 @@ void MulTrunc(zz_pEX& x, const zz_pEX& a, const zz_pEX& b, long n)
 
 void SqrTrunc(zz_pEX& x, const zz_pEX& a, long n)
 {
-   if (n < 0) LogicError("SqrTrunc: bad args");
+   if (n < 0) Error("SqrTrunc: bad args");
 
    zz_pEX t;
    sqr(t, a);
@@ -842,7 +809,7 @@ void trunc(zz_pEX& x, const zz_pEX& a, long m)
 // x = a % X^m, output may alias input 
 
 {
-   if (m < 0) LogicError("trunc: bad args");
+   if (m < 0) Error("trunc: bad args");
 
    if (&x == &a) {
       if (x.rep.length() > m) {
@@ -908,7 +875,7 @@ void MulByXModAux(zz_pEX& h, const zz_pEX& a, const zz_pEX& f)
    n = deg(f);
    m = deg(a);
 
-   if (m >= n || n == 0) LogicError("MulByXMod: bad args");
+   if (m >= n || n == 0) Error("MulByXMod: bad args");
 
    if (m < 0) {
       clear(h);
@@ -991,15 +958,15 @@ void PlainMul(zz_pEX& x, const zz_pEX& a, const zz_pEX& b)
    xp = x.rep.elts();
 
    long i, j, jmin, jmax;
-   zz_pX t, accum;
+   static zz_pX t, accum;
 
    for (i = 0; i <= d; i++) {
       jmin = max(0, i-db);
       jmax = min(da, i);
       clear(accum);
       for (j = jmin; j <= jmax; j++) {
-         mul(t, rep(ap[j]), rep(bp[i-j]));
-         add(accum, accum, t);
+	 mul(t, rep(ap[j]), rep(bp[i-j]));
+	 add(accum, accum, t);
       }
       conv(xp[i], accum);
    }
@@ -1030,7 +997,7 @@ void PlainDivRem(zz_pEX& q, zz_pEX& r, const zz_pEX& a, const zz_pEX& b)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) ArithmeticError("zz_pEX: division by zero");
+   if (db < 0) Error("zz_pEX: division by zero");
 
    if (da < db) {
       r = a;
@@ -1070,13 +1037,13 @@ void PlainDivRem(zz_pEX& q, zz_pEX& r, const zz_pEX& a, const zz_pEX& b)
    for (i = dq; i >= 0; i--) {
       conv(t, xp[i+db]);
       if (!LCIsOne)
-         mul(t, t, LCInv);
+	 mul(t, t, LCInv);
       qp[i] = t;
       negate(t, t);
 
       for (j = db-1; j >= 0; j--) {
-         mul(s, rep(t), rep(bp[j]));
-         add(xp[i+j], xp[i+j], s);
+	 mul(s, rep(t), rep(bp[j]));
+	 add(xp[i+j], xp[i+j], s);
       }
    }
 
@@ -1100,7 +1067,7 @@ void PlainRem(zz_pEX& r, const zz_pEX& a, const zz_pEX& b, vec_zz_pX& x)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) ArithmeticError("zz_pEX: division by zero");
+   if (db < 0) Error("zz_pEX: division by zero");
 
    if (da < db) {
       r = a;
@@ -1126,12 +1093,12 @@ void PlainRem(zz_pEX& r, const zz_pEX& a, const zz_pEX& b, vec_zz_pX& x)
    for (i = dq; i >= 0; i--) {
       conv(t, xp[i+db]);
       if (!LCIsOne)
-         mul(t, t, LCInv);
+	 mul(t, t, LCInv);
       negate(t, t);
 
       for (j = db-1; j >= 0; j--) {
-         mul(s, rep(t), rep(bp[j]));
-         add(xp[i+j], xp[i+j], s);
+	 mul(s, rep(t), rep(bp[j]));
+	 add(xp[i+j], xp[i+j], s);
       }
    }
 
@@ -1157,7 +1124,7 @@ void PlainDivRem(zz_pEX& q, zz_pEX& r, const zz_pEX& a, const zz_pEX& b,
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) ArithmeticError("zz_pEX: division by zero");
+   if (db < 0) Error("zz_pEX: division by zero");
 
    if (da < db) {
       r = a;
@@ -1193,13 +1160,13 @@ void PlainDivRem(zz_pEX& q, zz_pEX& r, const zz_pEX& a, const zz_pEX& b,
    for (i = dq; i >= 0; i--) {
       conv(t, xp[i+db]);
       if (!LCIsOne)
-         mul(t, t, LCInv);
+	 mul(t, t, LCInv);
       qp[i] = t;
       negate(t, t);
 
       for (j = db-1; j >= 0; j--) {
-         mul(s, rep(t), rep(bp[j]));
-         add(xp[i+j], xp[i+j], s);
+	 mul(s, rep(t), rep(bp[j]));
+	 add(xp[i+j], xp[i+j], s);
       }
    }
 
@@ -1224,7 +1191,7 @@ void PlainDiv(zz_pEX& q, const zz_pEX& a, const zz_pEX& b)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) ArithmeticError("zz_pEX: division by zero");
+   if (db < 0) Error("zz_pEX: division by zero");
 
    if (da < db) {
       clear(q);
@@ -1262,15 +1229,15 @@ void PlainDiv(zz_pEX& q, const zz_pEX& a, const zz_pEX& b)
    for (i = dq; i >= 0; i--) {
       conv(t, xp[i]);
       if (!LCIsOne)
-         mul(t, t, LCInv);
+	 mul(t, t, LCInv);
       qp[i] = t;
       negate(t, t);
 
       long lastj = max(0, db-i);
 
       for (j = db-1; j >= lastj; j--) {
-         mul(s, rep(t), rep(bp[j]));
-         add(xp[i+j-db], xp[i+j-db], s);
+	 mul(s, rep(t), rep(bp[j]));
+	 add(xp[i+j-db], xp[i+j-db], s);
       }
    }
 }
@@ -1288,7 +1255,7 @@ void PlainRem(zz_pEX& r, const zz_pEX& a, const zz_pEX& b)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) ArithmeticError("zz_pEX: division by zero");
+   if (db < 0) Error("zz_pEX: division by zero");
 
    if (da < db) {
       r = a;
@@ -1317,12 +1284,12 @@ void PlainRem(zz_pEX& r, const zz_pEX& a, const zz_pEX& b)
    for (i = dq; i >= 0; i--) {
       conv(t, xp[i+db]);
       if (!LCIsOne)
-         mul(t, t, LCInv);
+	 mul(t, t, LCInv);
       negate(t, t);
 
       for (j = db-1; j >= 0; j--) {
-         mul(s, rep(t), rep(bp[j]));
-         add(xp[i+j], xp[i+j], s);
+	 mul(s, rep(t), rep(bp[j]));
+	 add(xp[i+j], xp[i+j], s);
       }
    }
 
@@ -1336,13 +1303,8 @@ void PlainRem(zz_pEX& r, const zz_pEX& a, const zz_pEX& b)
 
 void RightShift(zz_pEX& x, const zz_pEX& a, long n)
 {
-   if (IsZero(a)) {
-      clear(x);
-      return;
-   }
-
    if (n < 0) {
-      if (n < -NTL_MAX_LONG) ResourceError("overflow in RightShift");
+      if (n < -NTL_MAX_LONG) Error("overflow in RightShift");
       LeftShift(x, a, -n);
       return;
    }
@@ -1369,21 +1331,19 @@ void RightShift(zz_pEX& x, const zz_pEX& a, long n)
 
 void LeftShift(zz_pEX& x, const zz_pEX& a, long n)
 {
+   if (n < 0) {
+      if (n < -NTL_MAX_LONG) Error("overflow in LeftShift");
+      RightShift(x, a, -n);
+      return;
+   }
+
+   if (n >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in LeftShift");
+
    if (IsZero(a)) {
       clear(x);
       return;
    }
-
-   if (n < 0) {
-      if (n < -NTL_MAX_LONG) 
-         clear(x);
-      else
-         RightShift(x, a, -n);
-      return;
-   }
-
-   if (NTL_OVERFLOW(n, 1, 0))
-      ResourceError("overflow in LeftShift");
 
    long m = a.rep.length();
 
@@ -1410,7 +1370,7 @@ void NewtonInv(zz_pEX& c, const zz_pEX& a, long e)
       return;
    }
 
-   vec_long E;
+   static vec_long E;
    E.SetLength(0);
    append(E, e);
    while (e > 1) {
@@ -1423,10 +1383,10 @@ void NewtonInv(zz_pEX& c, const zz_pEX& a, long e)
    zz_pEX g, g0, g1, g2;
 
 
-   g.rep.SetMaxLength(E[0]);
-   g0.rep.SetMaxLength(E[0]);
-   g1.rep.SetMaxLength((3*E[0]+1)/2);
-   g2.rep.SetMaxLength(E[0]);
+   g.rep.SetMaxLength(e);
+   g0.rep.SetMaxLength(e);
+   g1.rep.SetMaxLength((3*e+1)/2);
+   g2.rep.SetMaxLength(e);
 
    conv(g, x);
 
@@ -1456,14 +1416,14 @@ void NewtonInv(zz_pEX& c, const zz_pEX& a, long e)
 
 void InvTrunc(zz_pEX& c, const zz_pEX& a, long e)
 {
-   if (e < 0) LogicError("InvTrunc: bad args");
+   if (e < 0) Error("InvTrunc: bad args");
    if (e == 0) {
       clear(c);
       return;
    }
 
-   if (NTL_OVERFLOW(e, 1, 0))
-      ResourceError("overflow in InvTrunc");
+   if (e >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in InvTrunc");
 
    NewtonInv(c, a, e);
 }
@@ -1479,12 +1439,12 @@ void build(zz_pEXModulus& F, const zz_pEX& f)
 {
    long n = deg(f);
 
-   if (n <= 0) LogicError("build(zz_pEXModulus,zz_pEX): deg(f) <= 0");
+   if (n <= 0) Error("build(zz_pEXModulus,zz_pEX): deg(f) <= 0");
 
-   if (NTL_OVERFLOW(n, zz_pE::degree(), 0))
-      ResourceError("build(zz_pEXModulus,zz_pEX): overflow");
+   if (n >= (1L << (NTL_BITS_PER_LONG-4))/zz_pE::degree())
+      Error("build(zz_pEXModulus,zz_pEX): overflow");
 
-   F.tracevec.make();
+   F.tracevec.SetLength(0);
 
    F.f = f;
    F.n = n;
@@ -1740,7 +1700,7 @@ void div(zz_pEX& q, const zz_pEX& a, const zz_pEXModulus& F)
 
 void MulMod(zz_pEX& c, const zz_pEX& a, const zz_pEX& b, const zz_pEXModulus& F)
 {
-   if (deg(a) >= F.n || deg(b) >= F.n) LogicError("MulMod: bad args");
+   if (deg(a) >= F.n || deg(b) >= F.n) Error("MulMod: bad args");
 
    zz_pEX t;
    mul(t, a, b);
@@ -1750,7 +1710,7 @@ void MulMod(zz_pEX& c, const zz_pEX& a, const zz_pEX& b, const zz_pEXModulus& F)
 
 void SqrMod(zz_pEX& c, const zz_pEX& a, const zz_pEXModulus& F)
 {
-   if (deg(a) >= F.n) LogicError("MulMod: bad args");
+   if (deg(a) >= F.n) Error("MulMod: bad args");
 
    zz_pEX t;
    sqr(t, a);
@@ -1989,6 +1949,11 @@ void XGCD(zz_pEX& d, zz_pEX& s, zz_pEX& t, const zz_pEX& a, const zz_pEX& b)
    mul(t, t, z);
 }
 
+NTL_vector_impl(zz_pEX,vec_zz_pEX)
+
+NTL_eq_vector_impl(zz_pEX,vec_zz_pEX)
+
+NTL_io_vector_impl(zz_pEX,vec_zz_pEX)
 
 void IterBuild(zz_pE* a, long n)
 {
@@ -2062,7 +2027,7 @@ void eval(vec_zz_pE& b, const zz_pEX& f, const vec_zz_pE& a)
 void interpolate(zz_pEX& f, const vec_zz_pE& a, const vec_zz_pE& b)
 {
    long m = a.length();
-   if (b.length() != m) LogicError("interpolate: vector length mismatch");
+   if (b.length() != m) Error("interpolate: vector length mismatch");
 
    if (m == 0) {
       clear(f);
@@ -2190,7 +2155,7 @@ void build(zz_pEXArgument& A, const zz_pEX& h, const zz_pEXModulus& F, long m)
    long i;
 
    if (m <= 0 || deg(h) >= F.n)
-      LogicError("build: bad args");
+      Error("build: bad args");
 
    if (m > F.n) m = F.n;
 
@@ -2215,7 +2180,7 @@ void build(zz_pEXArgument& A, const zz_pEX& h, const zz_pEXModulus& F, long m)
       MulMod(A.H[i], A.H[i-1], h, F);
 }
 
-NTL_THREAD_LOCAL long zz_pEXArgBound = 0;
+long zz_pEXArgBound = 0;
 
 
 
@@ -2298,7 +2263,7 @@ void build(zz_pEXTransMultiplier& B, const zz_pEX& b, const zz_pEXModulus& F)
 {
    long db = deg(b);
 
-   if (db >= F.n) LogicError("build TransMultiplier: bad args");
+   if (db >= F.n) Error("build TransMultiplier: bad args");
 
    zz_pEX t;
 
@@ -2340,7 +2305,7 @@ void build(zz_pEXTransMultiplier& B, const zz_pEX& b, const zz_pEXModulus& F)
 void TransMulMod(zz_pEX& x, const zz_pEX& a, const zz_pEXTransMultiplier& B,
                const zz_pEXModulus& F)
 {
-   if (deg(a) >= F.n) LogicError("TransMulMod: bad args");
+   if (deg(a) >= F.n) Error("TransMulMod: bad args");
 
    zz_pEX t1, t2;
 
@@ -2396,12 +2361,8 @@ static
 void ProjectPowers(vec_zz_pE& x, const zz_pEX& a, long k, 
                    const zz_pEXArgument& H, const zz_pEXModulus& F)
 {
-   if (k < 0 || deg(a) >= F.n) 
-      LogicError("ProjectPowers: bad args");
-
-   if (NTL_OVERFLOW(k, 1, 0)) 
-      ResourceError("ProjectPowers: excessive args");
-
+   if (k < 0 || k >= (1L << (NTL_BITS_PER_LONG-4)) || deg(a) >= F.n)
+      Error("ProjectPowers: bad args");
 
    long m = H.H.length()-1;
    long l = (k+m-1)/m - 1;
@@ -2430,7 +2391,7 @@ void ProjectPowers(vec_zz_pE& x, const zz_pEX& a, long k, const zz_pEX& h,
                    const zz_pEXModulus& F)
 {
    if (k < 0 || deg(a) >= F.n || deg(h) >= F.n)
-      LogicError("ProjectPowers: bad args");
+      Error("ProjectPowers: bad args");
 
    if (k == 0) {
       x.SetLength(0);;
@@ -2530,8 +2491,8 @@ void BerlekampMassey(zz_pEX& h, const vec_zz_pE& a, long m)
 
 void MinPolySeq(zz_pEX& h, const vec_zz_pE& a, long m)
 {
-   if (m < 0 || NTL_OVERFLOW(m, 1, 0)) LogicError("MinPoly: bad args");
-   if (a.length() < 2*m) LogicError("MinPoly: sequence too short");
+   if (m < 0 || m >= (1L << (NTL_BITS_PER_LONG-4))) Error("MinPoly: bad args");
+   if (a.length() < 2*m) Error("BerlekampMassey: sequence too short");
 
    BerlekampMassey(h, a, m);
 }
@@ -2549,7 +2510,7 @@ void DoMinPolyMod(zz_pEX& h, const zz_pEX& g, const zz_pEXModulus& F, long m,
 void ProbMinPolyMod(zz_pEX& h, const zz_pEX& g, const zz_pEXModulus& F, long m)
 {
    long n = F.n;
-   if (m < 1 || m > n) LogicError("ProbMinPoly: bad args");
+   if (m < 1 || m > n) Error("ProbMinPoly: bad args");
 
    zz_pEX R;
    random(R, n);
@@ -2566,7 +2527,7 @@ void MinPolyMod(zz_pEX& hh, const zz_pEX& g, const zz_pEXModulus& F, long m)
 {
    zz_pEX h, h1;
    long n = F.n;
-   if (m < 1 || m > n) LogicError("MinPoly: bad args");
+   if (m < 1 || m > n) Error("MinPoly: bad args");
 
    /* probabilistically compute min-poly */
 
@@ -2598,7 +2559,7 @@ void MinPolyMod(zz_pEX& hh, const zz_pEX& g, const zz_pEXModulus& F, long m)
 
 void IrredPolyMod(zz_pEX& h, const zz_pEX& g, const zz_pEXModulus& F, long m)
 {
-   if (m < 1 || m > F.n) LogicError("IrredPoly: bad args");
+   if (m < 1 || m > F.n) Error("IrredPoly: bad args");
 
    zz_pEX R;
    set(R);
@@ -2716,7 +2677,7 @@ long OptWinSize(long n)
 void PowerMod(zz_pEX& h, const zz_pEX& g, const ZZ& e, const zz_pEXModulus& F)
 // h = g^e mod f using "sliding window" algorithm
 {
-   if (deg(g) >= F.n) LogicError("PowerMod: bad args");
+   if (deg(g) >= F.n) Error("PowerMod: bad args");
 
    if (e == 0) {
       set(h);
@@ -2826,20 +2787,18 @@ void PowerMod(zz_pEX& h, const zz_pEX& g, const ZZ& e, const zz_pEXModulus& F)
 
 void InvMod(zz_pEX& x, const zz_pEX& a, const zz_pEX& f)
 {
-   if (deg(a) >= deg(f) || deg(f) == 0) LogicError("InvMod: bad args");
+   if (deg(a) >= deg(f) || deg(f) == 0) Error("InvMod: bad args");
 
-   zz_pEX d, xx, t;
+   zz_pEX d, t;
 
-   XGCD(d, xx, t, a, f);
+   XGCD(d, x, t, a, f);
    if (!IsOne(d))
-      InvModError("zz_pEX InvMod: can't compute multiplicative inverse");
-
-   x = xx;
+      Error("zz_pEX InvMod: can't compute multiplicative inverse");
 }
 
 long InvModStatus(zz_pEX& x, const zz_pEX& a, const zz_pEX& f)
 {
-   if (deg(a) >= deg(f) || deg(f) == 0) LogicError("InvModStatus: bad args");
+   if (deg(a) >= deg(f) || deg(f) == 0) Error("InvModStatus: bad args");
    zz_pEX d, t;
 
    XGCD(d, x, t, a, f);
@@ -2855,7 +2814,7 @@ long InvModStatus(zz_pEX& x, const zz_pEX& a, const zz_pEX& f)
 void MulMod(zz_pEX& x, const zz_pEX& a, const zz_pEX& b, const zz_pEX& f)
 {
    if (deg(a) >= deg(f) || deg(b) >= deg(f) || deg(f) == 0)
-      LogicError("MulMod: bad args");
+      Error("MulMod: bad args");
 
    zz_pEX t;
 
@@ -2865,7 +2824,7 @@ void MulMod(zz_pEX& x, const zz_pEX& a, const zz_pEX& b, const zz_pEX& f)
 
 void SqrMod(zz_pEX& x, const zz_pEX& a, const zz_pEX& f)
 {
-   if (deg(a) >= deg(f) || deg(f) == 0) LogicError("SqrMod: bad args");
+   if (deg(a) >= deg(f) || deg(f) == 0) Error("SqrMod: bad args");
 
    zz_pEX t;
 
@@ -2876,7 +2835,7 @@ void SqrMod(zz_pEX& x, const zz_pEX& a, const zz_pEX& f)
 
 void PowerXMod(zz_pEX& hh, const ZZ& e, const zz_pEXModulus& F)
 {
-   if (F.n < 0) LogicError("PowerXMod: uninitialized modulus");
+   if (F.n < 0) Error("PowerXMod: uninitialized modulus");
 
    if (IsZero(e)) {
       set(hh);
@@ -2905,9 +2864,9 @@ void PowerXMod(zz_pEX& hh, const ZZ& e, const zz_pEXModulus& F)
 
 void reverse(zz_pEX& x, const zz_pEX& a, long hi)
 {
-   if (hi < 0) { clear(x); return; }
-   if (NTL_OVERFLOW(hi, 1, 0))
-      ResourceError("overflow in reverse");
+   if (hi < -1) Error("reverse: bad args");
+   if (hi >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in reverse");
 
    if (&x == &a) {
       zz_pEX tmp;
@@ -2922,7 +2881,7 @@ void reverse(zz_pEX& x, const zz_pEX& a, long hi)
 void power(zz_pEX& x, const zz_pEX& a, long e)
 {
    if (e < 0) {
-      ArithmeticError("power: negative exponent");
+      Error("power: negative exponent");
    }
 
    if (e == 0) {
@@ -2943,7 +2902,7 @@ void power(zz_pEX& x, const zz_pEX& a, long e)
    }
 
    if (da > (NTL_MAX_LONG-1)/e)
-      ResourceError("overflow in power");
+      Error("overflow in power");
 
    zz_pEX res;
    res.SetMaxLength(da*e + 1);
@@ -2982,7 +2941,7 @@ void FastTraceVec(vec_zz_pE& S, const zz_pEXModulus& f)
 void PlainTraceVec(vec_zz_pE& S, const zz_pEX& ff)
 {
    if (deg(ff) <= 0)
-      LogicError("TraceVec: bad args");
+      Error("TraceVec: bad args");
 
    zz_pEX f;
    f = ff;
@@ -3024,8 +2983,13 @@ void TraceVec(vec_zz_pE& S, const zz_pEX& f)
 }
 
 static
-void ComputeTraceVec(vec_zz_pE& S, const zz_pEXModulus& F)
+void ComputeTraceVec(const zz_pEXModulus& F)
 {
+   vec_zz_pE& S = *((vec_zz_pE *) &F.tracevec);
+
+   if (S.length() > 0)
+      return;
+
    if (F.method == zz_pEX_MOD_PLAIN) {
       PlainTraceVec(S, F.f);
    }
@@ -3039,24 +3003,18 @@ void TraceMod(zz_pE& x, const zz_pEX& a, const zz_pEXModulus& F)
    long n = F.n;
 
    if (deg(a) >= n)
-      LogicError("trace: bad args");
+      Error("trace: bad args");
 
-   do { // NOTE: thread safe lazy init
-      Lazy<vec_zz_pE>::Builder builder(F.tracevec.val());
-      if (!builder()) break;
-      UniquePtr<vec_zz_pE> p;
-      p.make();
-      ComputeTraceVec(*p, F);
-      builder.move(p);
-   } while (0);
+   if (F.tracevec.length() == 0) 
+      ComputeTraceVec(F);
 
-   InnerProduct(x, a.rep, *F.tracevec.val());
+   InnerProduct(x, a.rep, F.tracevec);
 }
 
 void TraceMod(zz_pE& x, const zz_pEX& a, const zz_pEX& f)
 {
    if (deg(a) >= deg(f) || deg(f) <= 0)
-      LogicError("trace: bad args");
+      Error("trace: bad args");
 
    project(x, TraceVec(f), a);
 }
@@ -3108,8 +3066,9 @@ void PlainResultant(zz_pE& rres, const zz_pEX& a, const zz_pEX& b)
             break;
          }
       }
+
+      rres = res;
    }
-   rres = res;
 }
 
 void resultant(zz_pE& rres, const zz_pEX& a, const zz_pEX& b)
@@ -3121,7 +3080,7 @@ void resultant(zz_pE& rres, const zz_pEX& a, const zz_pEX& b)
 void NormMod(zz_pE& x, const zz_pEX& a, const zz_pEX& f)
 {
    if (deg(f) <= 0 || deg(a) >= deg(f)) 
-      LogicError("norm: bad args");
+      Error("norm: bad args");
 
    if (IsZero(a)) {
       clear(x);
@@ -3262,7 +3221,7 @@ void PrecomputeProj(vec_zz_p& proj, const zz_pX& f)
 {
    long n = deg(f);
 
-   if (n <= 0) LogicError("PrecomputeProj: bad args");
+   if (n <= 0) Error("PrecomputeProj: bad args");
 
    if (ConstTerm(f) != 0) {
       proj.SetLength(1);
@@ -3283,10 +3242,8 @@ void ProjectPowersTower(vec_zz_p& x, const vec_zz_pE& a, long k,
 {
    long n = F.n;
 
-   if (a.length() > n || k < 0)
-      LogicError("ProjectPowers: bad args");
-   if (NTL_OVERFLOW(k, 1, 0))
-      ResourceError("ProjectPowers: excessive args");
+   if (a.length() > n || k < 0 || k >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("ProjectPowers: bad args");
 
    long m = H.H.length()-1;
    long l = (k+m-1)/m - 1;
@@ -3322,7 +3279,7 @@ void ProjectPowersTower(vec_zz_p& x, const vec_zz_pE& a, long k,
                    const vec_zz_p& proj)
 
 {
-   if (a.length() > F.n || k < 0) LogicError("ProjectPowers: bad args");
+   if (a.length() > F.n || k < 0) Error("ProjectPowers: bad args");
 
    if (k == 0) {
       x.SetLength(0);
@@ -3353,7 +3310,7 @@ void ProbMinPolyTower(zz_pX& h, const zz_pEX& g, const zz_pEXModulus& F,
                       long m)
 {
    long n = F.n;
-   if (m < 1 || m > n*zz_pE::degree()) LogicError("ProbMinPoly: bad args");
+   if (m < 1 || m > n*zz_pE::degree()) Error("ProbMinPoly: bad args");
 
    vec_zz_pE R;
    R.SetLength(n);
@@ -3372,7 +3329,7 @@ void ProbMinPolyTower(zz_pX& h, const zz_pEX& g, const zz_pEXModulus& F,
                       long m, const vec_zz_p& proj)
 {
    long n = F.n;
-   if (m < 1 || m > n*zz_pE::degree()) LogicError("ProbMinPoly: bad args");
+   if (m < 1 || m > n*zz_pE::degree()) Error("ProbMinPoly: bad args");
 
    vec_zz_pE R;
    R.SetLength(n);
@@ -3389,7 +3346,7 @@ void MinPolyTower(zz_pX& hh, const zz_pEX& g, const zz_pEXModulus& F, long m)
    zz_pEX h1;
    long n = F.n;
    if (m < 1 || m > n*zz_pE::degree()) {
-      LogicError("MinPoly: bad args");
+      Error("MinPoly: bad args");
    }
 
    vec_zz_p proj;
@@ -3429,7 +3386,7 @@ void MinPolyTower(zz_pX& hh, const zz_pEX& g, const zz_pEXModulus& F, long m)
 
 void IrredPolyTower(zz_pX& h, const zz_pEX& g, const zz_pEXModulus& F, long m)
 {
-   if (m < 1 || m > deg(F)*zz_pE::degree()) LogicError("IrredPoly: bad args");
+   if (m < 1 || m > deg(F)*zz_pE::degree()) Error("IrredPoly: bad args");
 
    vec_zz_pE R;
    R.SetLength(1);

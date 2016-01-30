@@ -7,7 +7,9 @@
 
 NTL_OPEN_NNS
 
-typedef Mat<zz_p> mat_zz_p;
+NTL_matrix_decl(zz_p,vec_zz_p,vec_vec_zz_p,mat_zz_p)
+NTL_io_matrix_decl(zz_p,vec_zz_p,vec_vec_zz_p,mat_zz_p)
+NTL_eq_matrix_decl(zz_p,vec_zz_p,vec_vec_zz_p,mat_zz_p)
 
 
 void add(mat_zz_p& X, const mat_zz_p& A, const mat_zz_p& B); 
@@ -79,7 +81,7 @@ inline zz_p determinant(const mat_zz_p& a)
    { zz_p x; determinant(x, a); return x; }
 // functional variant of determinant
 
-inline mat_zz_p transpose(const mat_zz_p& a)
+inline mat_zz_p transpose(mat_zz_p& a)
    { mat_zz_p x; transpose(x, a); NTL_OPT_RETURN(mat_zz_p, x); }
 
 void clear(mat_zz_p& a);

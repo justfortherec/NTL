@@ -6,230 +6,7 @@
 
 NTL_START_IMPL
 
-/*****************************************************************/
 
-// Fast CRT routines
-//   - we could perhaps move these out of here to make them
-//   - more widely accessible
-
-
-struct FastCRTHelper {
-
-   ZZ prod;
-   ZZ prod_half;
-   
-   long nprimes;
-
-   long nlevels;
-   long veclen;
-   long nblocks;   // number of nodes in the last level
-   long start_last_level;   // index of first item in last level
-
-   Vec<long> nprimes_vec;  // length == veclen
-   Vec<long> first_vec;    // length == nblocks
-   Vec<ZZ> prod_vec;       // length == veclen
-   Vec<long> coeff_vec;    // length == nprimes, coeff_vec[i] = (prod/p_i)^{-1} mod p_i
-
-
-   Vec<ZZ> tmp_vec;        // length == nlevels
-
-
-   ZZ tmp1, tmp2, tmp3;
-
-   FastCRTHelper(long bound, long thresh); 
-
-   void fill_nprimes_vec(long index); 
-   void fill_prod_vec(long index);
-
-   void reduce_aux(const ZZ& value, ZZ **remainders, long index, long level);
-   void reconstruct_aux(ZZ& value, ZZ **remainders, long index, long level);
-
-   void reduce(const ZZ& value, ZZ **remainders);
-   void reconstruct(ZZ& value, ZZ **remainders);
-
-};
-
-void FastCRTHelper::fill_nprimes_vec(long index) 
-{
-   long left, right;
-   left = 2*index + 1;
-   right = 2*index + 2;
-   if (left >= veclen) return;
-
-   nprimes_vec[left] = nprimes_vec[index]/2;
-   nprimes_vec[right] = nprimes_vec[index] - nprimes_vec[left];
-   fill_nprimes_vec(left);
-   fill_nprimes_vec(right);
-}
-
-void FastCRTHelper::fill_prod_vec(long index)
-{
-   long left, right;
-   left = 2*index + 1;
-   right = 2*index + 2;
-   if (left >= veclen) return;
-
-   fill_prod_vec(left);
-   fill_prod_vec(right);
-   mul(prod_vec[index], prod_vec[left], prod_vec[right]);
-}
-
-FastCRTHelper::FastCRTHelper(long bound, long thresh) 
-{
-   // assumes bound >= 1, thresh >= 1
-
-   prod = 1;
-   for (nprimes = 0; NumBits(prod) <= bound; nprimes++) {
-      UseFFTPrime(nprimes);
-      prod *= GetFFTPrime(nprimes);
-   }
-
-   RightShift(prod_half, prod, 1);
-
-   long sz = nprimes;
-   nlevels = 1;
-   while (sz > thresh) {
-      sz = sz/2;
-      nlevels++;
-   }
-
-   veclen = (1L << nlevels) - 1;
-   nblocks = 1L << (nlevels-1);
-   start_last_level = (1L << (nlevels-1)) - 1;
-
-   nprimes_vec.SetLength(veclen);
-   nprimes_vec[0] = nprimes;
-
-   fill_nprimes_vec(0);
-
-   long k, i;
-   first_vec.SetLength(nblocks+1);
-
-   first_vec[0] = 0;
-   for (k = 1; k <= nblocks; k++)
-      first_vec[k] = first_vec[k-1] + nprimes_vec[start_last_level + k-1];
-
-   prod_vec.SetLength(veclen);
-
-   // fill product leaves
-   for (k = 0; k < nblocks; k++) {
-      prod_vec[start_last_level + k] = 1;
-      for (i = first_vec[k]; i < first_vec[k+1]; i++) {
-         prod_vec[start_last_level + k] *= GetFFTPrime(i);
-      }
-   }
-
-   // fill rest of product trees
-   fill_prod_vec(0);
-
-   ZZ t1;
-   long tt;
-
-   // fill coeff_vec: simple, quadratic time for now
-   // not really essential to speed this up
-   coeff_vec.SetLength(nprimes);
-   for (long i = 0; i < nprimes; i++) {
-      long p = GetFFTPrime(i);
-      div(t1, prod, p);
-      tt = rem(t1, p);
-      tt = InvMod(tt, p);
-      coeff_vec[i] = tt;
-   }
-
-   tmp_vec.SetLength(nlevels);
-}
-
-void FastCRTHelper::reduce_aux(const ZZ& value, ZZ **remainders, long index, long level)
-{
-   long left, right;
-   left = 2*index + 1;
-   right = 2*index + 2;
-
-   ZZ *result = 0;
-
-   if (left >= veclen) 
-      result = remainders[index - start_last_level];
-   else
-      result = &tmp_vec[level];
-
-   if (NumBits(value) <= NumBits(prod_vec[index]))
-      *result = value;
-   else {
-      rem(tmp1, value, prod_vec[index]);
-      sub(tmp2, tmp1, prod_vec[index]);
-      if (NumBits(tmp2) < NumBits(tmp1))
-         *result = tmp2;
-      else
-         *result = tmp1;
-   }
-
-   if (left < veclen) {
-      reduce_aux(*result, remainders, left, level+1);
-      reduce_aux(*result, remainders, right, level+1);
-   }
-
-}
-
-void FastCRTHelper::reduce(const ZZ& value, ZZ **remainders)
-{
-   reduce_aux(value, remainders, 0, 0);
-}
-
-void FastCRTHelper::reconstruct_aux(ZZ& value, ZZ **remainders, long index, long level)
-{
-   long left, right;
-   left = 2*index + 1;
-   right = 2*index + 2;
-
-   if (left >= veclen) {
-      value = *remainders[index - start_last_level];
-      return;
-   }
-
-   reconstruct_aux(tmp_vec[level], remainders, left, level+1);
-   reconstruct_aux(tmp1, remainders, right, level+1);
-
-   mul(tmp2, tmp_vec[level], prod_vec[right]);
-   mul(tmp3, tmp1, prod_vec[left]);
-   add(value, tmp2, tmp3);
-}
-
-void FastCRTHelper::reconstruct(ZZ& value, ZZ **remainders)
-{
-   reconstruct_aux(tmp1, remainders, 0, 0);
-   rem(tmp1, tmp1, prod);
-   if (tmp1 > prod_half)
-      sub(tmp1, tmp1, prod);
-
-   value = tmp1;
-}
-
-
-
-
-
-
-
-
-
-/*****************************************************************/
-
-
-static
-long MaxSize(const ZZX& a)
-{
-   long res = 0;
-   long n = a.rep.length();
-
-   long i;
-   for (i = 0; i < n; i++) {
-      long t = a.rep[i].size();
-      if (t > res)
-         res = t;
-   }
-
-   return res;
-}
 
 
 
@@ -271,6 +48,7 @@ long CRT(ZZX& gg, ZZ& a, const zz_pX& G)
    long modified = 0;
 
    long h;
+   ZZ ah;
 
    long m = G.rep.length();
 
@@ -303,11 +81,12 @@ long CRT(ZZX& gg, ZZ& a, const zz_pX& G)
    
       if (h != 0) {
          modified = 1;
-
+         mul(ah, a, h);
+   
          if (!p_odd && g > 0 && (h == p1))
-            MulSubFrom(g, a, h);
+            sub(g, g, ah);
          else
-            MulAddTo(g, a, h);
+            add(g, g, ah);
       }
 
       gg.rep[i] = g;
@@ -422,7 +201,7 @@ long CRT(ZZX& gg, ZZ& a, const ZZ_pX& G)
 
 /* Compute a = b * 2^l mod p, where p = 2^n+1. 0<=l<=n and 0<b<p are
    assumed. */
-static void LeftRotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n, ZZ& scratch)
+static void LeftRotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n)
 {
   if (l == 0) {
     if (&a != &b) {
@@ -431,13 +210,14 @@ static void LeftRotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n, ZZ& scra
     return;
   }
 
-  /* scratch := upper l bits of b */
-  RightShift(scratch, b, n - l);
+  /* tmp := upper l bits of b */
+  static ZZ tmp;
+  RightShift(tmp, b, n - l);
   /* a := 2^l * lower n - l bits of b */
   trunc(a, b, n - l);
   LeftShift(a, a, l);
-  /* a -= scratch */
-  sub(a, a, scratch);
+  /* a -= tmp */
+  sub(a, a, tmp);
   if (sign(a) < 0) {
     add(a, a, p);
   }
@@ -445,7 +225,7 @@ static void LeftRotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n, ZZ& scra
 
 
 /* Compute a = b * 2^l mod p, where p = 2^n+1. 0<=p<b is assumed. */
-static void Rotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n, ZZ& scratch)
+static void Rotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n)
 {
   if (IsZero(b)) {
     clear(a);
@@ -461,9 +241,9 @@ static void Rotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n, ZZ& scratch)
 
   /* a = b * 2^l mod p */
   if (l < n) {
-    LeftRotate(a, b, l, p, n, scratch);
+    LeftRotate(a, b, l, p, n);
   } else {
-    LeftRotate(a, b, l - n, p, n, scratch);
+    LeftRotate(a, b, l - n, p, n);
     SubPos(a, p, a);
   }
 }
@@ -474,34 +254,33 @@ static void Rotate(ZZ& a, const ZZ& b, long l, const ZZ& p, long n, ZZ& scratch)
    p = 2^n+1, w = 2^r mod p is a primitive (2^l)th root of
    unity. Returns a(1),a(w),...,a(w^{2^l-1}) mod p in bit-reverse
    order. */
-static void fft(ZZVec& a, long r, long l, const ZZ& p, long n)
+static void fft(vec_ZZ& a, long r, long l, const ZZ& p, long n)
 {
   long round;
   long off, i, j, e;
   long halfsize;
   ZZ tmp, tmp1;
-  ZZ scratch;
 
   for (round = 0; round < l; round++, r <<= 1) {
     halfsize =  1L << (l - 1 - round);
     for (i = (1L << round) - 1, off = 0; i >= 0; i--, off += halfsize) {
       for (j = 0, e = 0; j < halfsize; j++, off++, e+=r) {
-        /* One butterfly : 
-         ( a[off], a[off+halfsize] ) *= ( 1  w^{j2^round} )
-                                        ( 1 -w^{j2^round} ) */
-        /* tmp = a[off] - a[off + halfsize] mod p */
-        sub(tmp, a[off], a[off + halfsize]);
-        if (sign(tmp) < 0) {
-          add(tmp, tmp, p);
-        }
-        /* a[off] += a[off + halfsize] mod p */
-        add(a[off], a[off], a[off + halfsize]);
-        sub(tmp1, a[off], p);
-        if (sign(tmp1) >= 0) {
-          a[off] = tmp1;
-        }
-        /* a[off + halfsize] = tmp * w^{j2^round} mod p */
-        Rotate(a[off + halfsize], tmp, e, p, n, scratch);
+	/* One butterfly : 
+	 ( a[off], a[off+halfsize] ) *= ( 1  w^{j2^round} )
+	                                ( 1 -w^{j2^round} ) */
+	/* tmp = a[off] - a[off + halfsize] mod p */
+	sub(tmp, a[off], a[off + halfsize]);
+	if (sign(tmp) < 0) {
+	  add(tmp, tmp, p);
+	}
+	/* a[off] += a[off + halfsize] mod p */
+	add(a[off], a[off], a[off + halfsize]);
+	sub(tmp1, a[off], p);
+	if (sign(tmp1) >= 0) {
+	  a[off] = tmp1;
+	}
+	/* a[off + halfsize] = tmp * w^{j2^round} mod p */
+	Rotate(a[off + halfsize], tmp, e, p, n);
       }
     }
   }
@@ -509,38 +288,37 @@ static void fft(ZZVec& a, long r, long l, const ZZ& p, long n)
 
 /* Inverse FFT. r must be the same as in the call to FFT. Result is
    by 2^l too large. */
-static void ifft(ZZVec& a, long r, long l, const ZZ& p, long n)
+static void ifft(vec_ZZ& a, long r, long l, const ZZ& p, long n)
 {
   long round;
   long off, i, j, e;
   long halfsize;
   ZZ tmp, tmp1;
-  ZZ scratch;
 
   for (round = l - 1, r <<= l - 1; round >= 0; round--, r >>= 1) {
     halfsize = 1L << (l - 1 - round);
     for (i = (1L << round) - 1, off = 0; i >= 0; i--, off += halfsize) {
       for (j = 0, e = 0; j < halfsize; j++, off++, e+=r) {
-        /* One inverse butterfly : 
-         ( a[off], a[off+halfsize] ) *= ( 1               1             )
-                                        ( w^{-j2^round}  -w^{-j2^round} ) */
-        /* a[off + halfsize] *= w^{-j2^round} mod p */
-        Rotate(a[off + halfsize], a[off + halfsize], -e, p, n, scratch);
-        /* tmp = a[off] - a[off + halfsize] */
-        sub(tmp, a[off], a[off + halfsize]);
+	/* One inverse butterfly : 
+	 ( a[off], a[off+halfsize] ) *= ( 1               1             )
+	                                ( w^{-j2^round}  -w^{-j2^round} ) */
+	/* a[off + halfsize] *= w^{-j2^round} mod p */
+	Rotate(a[off + halfsize], a[off + halfsize], -e, p, n);
+	/* tmp = a[off] - a[off + halfsize] */
+	sub(tmp, a[off], a[off + halfsize]);
 
-        /* a[off] += a[off + halfsize] mod p */
-        add(a[off], a[off], a[off + halfsize]);
-        sub(tmp1, a[off], p);
-        if (sign(tmp1) >= 0) {
-          a[off] = tmp1;
-        }
-        /* a[off+halfsize] = tmp mod p */
-        if (sign(tmp) < 0) {
-          add(a[off+halfsize], tmp, p);
-        } else {
-          a[off+halfsize] = tmp;
-        }
+	/* a[off] += a[off + halfsize] mod p */
+	add(a[off], a[off], a[off + halfsize]);
+	sub(tmp1, a[off], p);
+	if (sign(tmp1) >= 0) {
+	  a[off] = tmp1;
+	}
+	/* a[off+halfsize] = tmp mod p */
+	if (sign(tmp) < 0) {
+	  add(a[off+halfsize], tmp, p);
+	} else {
+	  a[off+halfsize] = tmp;
+	}
       }
     }
   }
@@ -558,11 +336,6 @@ static void ifft(ZZVec& a, long r, long l, const ZZ& p, long n)
 
 void SSMul(ZZX& c, const ZZX& a, const ZZX& b)
 {
-  if (&a == &b) {
-    SSSqr(c, a);
-    return;
-  }
-
   long na = deg(a);
   long nb = deg(b);
 
@@ -593,9 +366,9 @@ void SSMul(ZZX& c, const ZZX& a, const ZZX& b)
   add(p, p, 1);
 
   /* Make coefficients of a and b positive */
-  ZZVec aa, bb;
-  aa.SetSize(m2, p.size());
-  bb.SetSize(m2, p.size());
+  vec_ZZ aa, bb;
+  aa.SetLength(m2);
+  bb.SetLength(m2);
 
   long i;
   for (i = 0; i <= deg(a); i++) {
@@ -614,7 +387,6 @@ void SSMul(ZZX& c, const ZZX& a, const ZZX& b)
     }
   }
 
-
   /* 2m-point FFT's mod p */
   fft(aa, r, l + 1, p, mr);
   fft(bb, r, l + 1, p, mr);
@@ -628,14 +400,13 @@ void SSMul(ZZX& c, const ZZX& a, const ZZX& b)
       trunc(ai, ai, mr);
       sub(ai, ai, tmp);
       if (sign(ai) < 0) {
-        add(ai, ai, p);
+	add(ai, ai, p);
       }
     }
     aa[i] = ai;
   }
   
   ifft(aa, r, l + 1, p, mr);
-  ZZ scratch;
 
   /* Retrieve c, dividing by 2m, and subtracting p where necessary */
   c.rep.SetLength(n + 1);
@@ -644,10 +415,10 @@ void SSMul(ZZX& c, const ZZX& a, const ZZX& b)
     ZZ& ci = c.rep[i];
     if (!IsZero(ai)) {
       /* ci = -ai * 2^{mr-l-1} = ai * 2^{-l-1} = ai / 2m mod p */
-      LeftRotate(ai, ai, mr - l - 1, p, mr, scratch);
+      LeftRotate(ai, ai, mr - l - 1, p, mr);
       sub(tmp, p, ai);
       if (NumBits(tmp) >= mr) { /* ci >= (p-1)/2 */
-        negate(ci, ai); /* ci = -ai = ci - p */
+	negate(ci, ai); /* ci = -ai = ci - p */
       }
       else
         ci = tmp;
@@ -658,7 +429,7 @@ void SSMul(ZZX& c, const ZZX& a, const ZZX& b)
 }
 
 
-// SSRatio computes how much bigger the SS modulus must be
+// SSRatio computes how much bigger the SS moduls must be
 // to accomodate the necessary roots of unity.
 // This is useful in determining algorithm crossover points.
 
@@ -677,33 +448,12 @@ double SSRatio(long na, long maxa, long nb, long maxb)
   return double(mr + 1)/double(bound);
 }
 
-
-
-void conv(vec_zz_p& x, const ZZVec& a)
-{
-   long i, n;
-
-   n = a.length();
-   x.SetLength(n);
-
-   zz_p* xp = x.elts();
-   const ZZ* ap = a.elts();
-
-   long p = zz_p::modulus();
-
-   for (i = 0; i < n; i++)
-      xp[i].LoopHole() = rem(a[i], p);
-}
-
-
-
 void HomMul(ZZX& x, const ZZX& a, const ZZX& b)
 {
    if (&a == &b) {
       HomSqr(x, a);
       return;
    }
-
 
    long da = deg(a);
    long db = deg(b);
@@ -713,78 +463,92 @@ void HomMul(ZZX& x, const ZZX& a, const ZZX& b)
       return;
    }
 
+   long bound = 2 + NumBits(min(da, db)+1) + MaxBits(a) + MaxBits(b);
+
+
+   ZZ prod;
+   set(prod);
+
+   long i, nprimes;
+
    zz_pBak bak;
    bak.save();
 
-   long bound = 2 + NumBits(min(da, db)+1) + MaxBits(a) + MaxBits(b);
-
-   FastCRTHelper H(bound, 48);      
-
-   long i, j, k;
-
-   Vec<ZZVec> c, aa, bb;
-
-   c.SetLength(H.nblocks);
-   aa.SetLength(H.nblocks);
-   bb.SetLength(H.nblocks);
-
-   long sz_a = max(1, MaxSize(a));
-   long sz_b = max(1, MaxSize(b));
-
-   for (k = 0; k < H.nblocks; k++) {
-      ZZ *prod_vec = &H.prod_vec[H.start_last_level];
-      c[k].SetSize(da+db+1, prod_vec[k].size()+1);
-      aa[k].SetSize(da+1, min(sz_a, prod_vec[k].size()));
-      bb[k].SetSize(db+1, min(sz_b, prod_vec[k].size()));
+   for (nprimes = 0; NumBits(prod) <= bound; nprimes++) {
+      if (nprimes >= NumFFTPrimes)
+         zz_p::FFTInit(nprimes);
+      mul(prod, prod, FFTPrime[nprimes]);
    }
 
-   Vec<ZZ*> ptr_vec;
-   ptr_vec.SetLength(H.nblocks);
 
-   for (j = 0; j <= da; j++) {
-      for (k = 0; k < H.nblocks; k++) ptr_vec[k] = &aa[k][j];
-      H.reduce(a.rep[j], ptr_vec.elts());
-   }
-
-   for (j = 0; j <= db; j++) {
-      for (k = 0; k < H.nblocks; k++) ptr_vec[k] = &bb[k][j];
-      H.reduce(b.rep[j], ptr_vec.elts());
-   }
-
+   ZZ coeff;
    ZZ t1;
-     
-   for (k = 0; k < H.nblocks; k++) {
-      for (i = H.first_vec[k]; i < H.first_vec[k+1]; i++) {
-         zz_p::FFTInit(i);
+   long tt;
 
-         zz_pX A, B, C;
-         conv(A.rep, aa[k]); A.normalize();
-         conv(B.rep, bb[k]); B.normalize();
-         mul(C, A, B);
+   vec_ZZ c;
 
-         long m = deg(C);
-         long p = zz_p::modulus();
-         long tt = H.coeff_vec[i];
-         mulmod_precon_t ttpinv = PrepMulModPrecon(tt, p);
-         div(t1, H.prod_vec[H.start_last_level+k], p);
-         for (j = 0; j <= m; j++) {
-            long tt1 = MulModPrecon(rep(C.rep[j]), tt, p, ttpinv);
-            MulAddTo(c[k][j], t1, tt1);
-         }
+   c.SetLength(da+db+1);
+
+   long j;
+
+   for (i = 0; i < nprimes; i++) {
+      zz_p::FFTInit(i);
+      long p = zz_p::modulus();
+
+      div(t1, prod, p);
+      tt = rem(t1, p);
+      tt = InvMod(tt, p);
+      mul(coeff, t1, tt);
+
+      zz_pX A, B, C;
+
+      conv(A, a);
+      conv(B, b);
+      mul(C, A, B);
+
+      long m = deg(C);
+
+      for (j = 0; j <= m; j++) {
+         /* c[j] += coeff*rep(C.rep[j]) */
+         mul(t1, coeff, rep(C.rep[j]));
+         add(c[j], c[j], t1); 
       }
    }
 
    x.rep.SetLength(da+db+1);
+
+   ZZ prod2;
+   RightShift(prod2, prod, 1);
+
    for (j = 0; j <= da+db; j++) {
-      for (k = 0; k < H.nblocks; k++) ptr_vec[k] = &c[k][j];
-      H.reconstruct(x.rep[j], ptr_vec.elts());
+      rem(t1, c[j], prod);
+
+      if (t1 > prod2)
+         sub(x.rep[j], t1, prod);
+      else
+         x.rep[j] = t1;
    }
 
    x.normalize();
+
    bak.restore();
 }
 
+static
+long MaxSize(const ZZX& a)
+{
+   long res = 0;
+   long n = a.rep.length();
 
+   long i;
+   for (i = 0; i < n; i++) {
+      long t = a.rep[i].size();
+      if (t > res)
+         res = t;
+   }
+
+   return res;
+}
 
 
 void mul(ZZX& c, const ZZX& a, const ZZX& b)
@@ -805,9 +569,6 @@ void mul(ZZX& c, const ZZX& a, const ZZX& b)
    long k = min(maxa, maxb);
    long s = min(deg(a), deg(b)) + 1;
 
-   // FIXME: I should have a way of setting all these crossovers
-   // automatically
-
    if (s == 1 || (k == 1 && s < 40) || (k == 2 && s < 20) || 
                  (k == 3 && s < 10)) {
 
@@ -821,22 +582,11 @@ void mul(ZZX& c, const ZZX& a, const ZZX& b)
    }
 
 
-   double rat = SSRatio(deg(a), MaxBits(a), deg(b), MaxBits(b));
-   long k1 = (maxa + maxb)/2;
-
-   if ( 
-
-      (k1 >= 26  && rat < 1.40) || 
-      (k1 >= 53  && rat < 1.60) || 
-      (k1 >= 106 && rat < 1.80) || 
-      (k1 >= 212 && rat < 2.00) 
-
-   ) {
+   if (maxa + maxb >= 40 && 
+       SSRatio(deg(a), MaxBits(a), deg(b), MaxBits(b)) < 1.75) 
       SSMul(c, a, b);
-   }
-   else {
+   else
       HomMul(c, a, b);
-   }
 }
 
 
@@ -863,8 +613,8 @@ void SSSqr(ZZX& c, const ZZX& a)
   LeftShift(p, p, mr);
   add(p, p, 1);
 
-  ZZVec aa;
-  aa.SetSize(m2, p.size());
+  vec_ZZ aa;
+  aa.SetLength(m2);
 
   long i;
   for (i = 0; i <= deg(a); i++) {
@@ -888,7 +638,7 @@ void SSSqr(ZZX& c, const ZZX& a)
       trunc(ai, ai, mr);
       sub(ai, ai, tmp);
       if (sign(ai) < 0) {
-        add(ai, ai, p);
+	add(ai, ai, p);
       }
     }
     aa[i] = ai;
@@ -901,17 +651,15 @@ void SSSqr(ZZX& c, const ZZX& a)
   /* Retrieve c, dividing by 2m, and subtracting p where necessary */
   c.rep.SetLength(n + 1);
 
-  ZZ scratch;
-
   for (i = 0; i <= n; i++) {
     ai = aa[i];
     ZZ& ci = c.rep[i];
     if (!IsZero(ai)) {
       /* ci = -ai * 2^{mr-l-1} = ai * 2^{-l-1} = ai / 2m mod p */
-      LeftRotate(ai, ai, mr - l - 1, p, mr, scratch);
+      LeftRotate(ai, ai, mr - l - 1, p, mr);
       sub(tmp, p, ai);
       if (NumBits(tmp) >= mr) { /* ci >= (p-1)/2 */
-        negate(ci, ai); /* ci = -ai = ci - p */
+	negate(ci, ai); /* ci = -ai = ci - p */
       }
       else
         ci = tmp;
@@ -923,6 +671,7 @@ void SSSqr(ZZX& c, const ZZX& a)
 
 void HomSqr(ZZX& x, const ZZX& a)
 {
+
    long da = deg(a);
 
    if (da < 0) {
@@ -930,68 +679,75 @@ void HomSqr(ZZX& x, const ZZX& a)
       return;
    }
 
+   long bound = 2 + NumBits(da+1) + 2*MaxBits(a);
+
+
+   ZZ prod;
+   set(prod);
+
+   long i, nprimes;
+
    zz_pBak bak;
    bak.save();
 
-   long bound = 2 + NumBits(da+1) + 2*MaxBits(a);
-
-   FastCRTHelper H(bound, 48);      
-
-   long i, j, k;
-
-   Vec<ZZVec> c, aa;
-
-   c.SetLength(H.nblocks);
-   aa.SetLength(H.nblocks);
-
-   long sz_a = max(1, MaxSize(a));
-
-   for (k = 0; k < H.nblocks; k++) {
-      ZZ *prod_vec = &H.prod_vec[H.start_last_level];
-      c[k].SetSize(da+da+1, prod_vec[k].size()+1);
-      aa[k].SetSize(da+1, min(sz_a, prod_vec[k].size()));
+   for (nprimes = 0; NumBits(prod) <= bound; nprimes++) {
+      if (nprimes >= NumFFTPrimes)
+         zz_p::FFTInit(nprimes);
+      mul(prod, prod, FFTPrime[nprimes]);
    }
 
-   Vec<ZZ*> ptr_vec;
-   ptr_vec.SetLength(H.nblocks);
 
-   for (j = 0; j <= da; j++) {
-      for (k = 0; k < H.nblocks; k++) ptr_vec[k] = &aa[k][j];
-      H.reduce(a.rep[j], ptr_vec.elts());
-   }
-
+   ZZ coeff;
    ZZ t1;
-     
-   for (k = 0; k < H.nblocks; k++) {
-      for (i = H.first_vec[k]; i < H.first_vec[k+1]; i++) {
-         zz_p::FFTInit(i);
+   long tt;
 
-         zz_pX A, C;
-         conv(A.rep, aa[k]); A.normalize();
-         sqr(C, A);
+   vec_ZZ c;
 
-         long m = deg(C);
-         long p = zz_p::modulus();
-         long tt = H.coeff_vec[i];
-         mulmod_precon_t ttpinv = PrepMulModPrecon(tt, p);
-         div(t1, H.prod_vec[H.start_last_level+k], p);
-         for (j = 0; j <= m; j++) {
-            long tt1 = MulModPrecon(rep(C.rep[j]), tt, p, ttpinv);
-            MulAddTo(c[k][j], t1, tt1);
-         }
+   c.SetLength(da+da+1);
+
+   long j;
+
+   for (i = 0; i < nprimes; i++) {
+      zz_p::FFTInit(i);
+      long p = zz_p::modulus();
+
+      div(t1, prod, p);
+      tt = rem(t1, p);
+      tt = InvMod(tt, p);
+      mul(coeff, t1, tt);
+
+      zz_pX A, C;
+
+      conv(A, a);
+      sqr(C, A);
+
+      long m = deg(C);
+
+      for (j = 0; j <= m; j++) {
+         /* c[j] += coeff*rep(C.rep[j]) */
+         mul(t1, coeff, rep(C.rep[j]));
+         add(c[j], c[j], t1); 
       }
    }
 
    x.rep.SetLength(da+da+1);
+
+   ZZ prod2;
+   RightShift(prod2, prod, 1);
+
    for (j = 0; j <= da+da; j++) {
-      for (k = 0; k < H.nblocks; k++) ptr_vec[k] = &c[k][j];
-      H.reconstruct(x.rep[j], ptr_vec.elts());
+      rem(t1, c[j], prod);
+
+      if (t1 > prod2)
+         sub(x.rep[j], t1, prod);
+      else
+         x.rep[j] = t1;
    }
 
    x.normalize();
+
    bak.restore();
 }
-
 
 
 void sqr(ZZX& c, const ZZX& a)
@@ -1019,22 +775,12 @@ void sqr(ZZX& c, const ZZX& a)
    }
 
    long mba = MaxBits(a);
-   double rat = SSRatio(deg(a), mba, deg(a), mba);
-   long k1 = maxa;
-
-   if ( 
-
-      (k1 >= 26  && rat < 1.40) || 
-      (k1 >= 53  && rat < 1.60) || 
-      (k1 >= 106 && rat < 1.80) || 
-      (k1 >= 212 && rat < 2.00) 
-
-   ) {
+   
+   if (2*maxa >= 40 && 
+       SSRatio(deg(a), mba, deg(a), mba) < 1.75) 
       SSSqr(c, a);
-   }
-   else {
+   else
       HomSqr(c, a);
-   }
 }
 
 
@@ -1110,13 +856,13 @@ void diff(ZZX& x, const ZZX& a)
 
 void HomPseudoDivRem(ZZX& q, ZZX& r, const ZZX& a, const ZZX& b)
 {
-   if (IsZero(b)) ArithmeticError("division by zero");
+   if (IsZero(b)) Error("division by zero");
 
    long da = deg(a);
    long db = deg(b);
 
    if (da < db) {
-      r = a;
+      r = b;
       clear(q);
       return;
    }
@@ -1239,7 +985,7 @@ void PlainPseudoDivRem(ZZX& q, ZZX& r, const ZZX& a, const ZZX& b)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) ArithmeticError("ZZX: division by zero");
+   if (db < 0) Error("ZZX: division by zero");
 
    if (da < db) {
       r = a;
@@ -1282,9 +1028,9 @@ void PlainPseudoDivRem(ZZX& q, ZZX& r, const ZZX& a, const ZZX& b)
       qp[i] = t;
 
       for (j = db-1; j >= 0; j--) {
-         mul(s, t, bp[j]);
+	 mul(s, t, bp[j]);
          if (!LCIsOne) mul(xp[i+j], xp[i+j], LC);
-         sub(xp[i+j], xp[i+j], s);
+	 sub(xp[i+j], xp[i+j], s);
       }
    }
 
@@ -1318,24 +1064,24 @@ void PlainPseudoRem(ZZX& r, const ZZX& a, const ZZX& b)
 
 void div(ZZX& q, const ZZX& a, long b)
 {
-   if (b == 0) ArithmeticError("div: division by zero");
+   if (b == 0) Error("div: division by zero");
 
-   if (!divide(q, a, b)) ArithmeticError("DivRem: quotient undefined over ZZ");
+   if (!divide(q, a, b)) Error("DivRem: quotient undefined over ZZ");
 }
 
 void div(ZZX& q, const ZZX& a, const ZZ& b)
 {
-   if (b == 0) ArithmeticError("div: division by zero");
+   if (b == 0) Error("div: division by zero");
 
-   if (!divide(q, a, b)) ArithmeticError("DivRem: quotient undefined over ZZ");
+   if (!divide(q, a, b)) Error("DivRem: quotient undefined over ZZ");
 }
 
 static
 void ConstDivRem(ZZX& q, ZZX& r, const ZZX& a, const ZZ& b)
 {
-   if (b == 0) ArithmeticError("DivRem: division by zero");
+   if (b == 0) Error("DivRem: division by zero");
 
-   if (!divide(q, a, b)) ArithmeticError("DivRem: quotient undefined over ZZ");
+   if (!divide(q, a, b)) Error("DivRem: quotient undefined over ZZ");
 
    r = 0;
 }
@@ -1343,7 +1089,7 @@ void ConstDivRem(ZZX& q, ZZX& r, const ZZX& a, const ZZ& b)
 static
 void ConstRem(ZZX& r, const ZZX& a, const ZZ& b)
 {
-   if (b == 0) ArithmeticError("rem: division by zero");
+   if (b == 0) Error("rem: division by zero");
 
    r = 0;
 }
@@ -1355,7 +1101,7 @@ void DivRem(ZZX& q, ZZX& r, const ZZX& a, const ZZX& b)
    long da = deg(a);
    long db = deg(b);
 
-   if (db < 0) ArithmeticError("DivRem: division by zero");
+   if (db < 0) Error("DivRem: division by zero");
 
    if (da < db) {
       r = a;
@@ -1381,8 +1127,8 @@ void DivRem(ZZX& q, ZZX& r, const ZZX& a, const ZZX& b)
       ZZ m;
       PseudoDivRem(q1, r1, a, b);
       power(m, LeadCoeff(b), da-db+1);
-      if (!divide(q, q1, m)) ArithmeticError("DivRem: quotient not defined over ZZ");
-      if (!divide(r, r1, m)) ArithmeticError("DivRem: remainder not defined over ZZ");
+      if (!divide(q, q1, m)) Error("DivRem: quotient not defined over ZZ");
+      if (!divide(r, r1, m)) Error("DivRem: remainder not defined over ZZ");
    }
 }
 
@@ -1391,7 +1137,7 @@ void div(ZZX& q, const ZZX& a, const ZZX& b)
    long da = deg(a);
    long db = deg(b);
 
-   if (db < 0) ArithmeticError("div: division by zero");
+   if (db < 0) Error("div: division by zero");
 
    if (da < db) {
       q = 0;
@@ -1418,7 +1164,7 @@ void div(ZZX& q, const ZZX& a, const ZZX& b)
       ZZ m;
       PseudoDiv(q1, a, b);
       power(m, LeadCoeff(b), da-db+1);
-      if (!divide(q, q1, m)) ArithmeticError("div: quotient not defined over ZZ");
+      if (!divide(q, q1, m)) Error("div: quotient not defined over ZZ");
    }
 }
 
@@ -1427,7 +1173,7 @@ void rem(ZZX& r, const ZZX& a, const ZZX& b)
    long da = deg(a);
    long db = deg(b);
 
-   if (db < 0) ArithmeticError("rem: division by zero");
+   if (db < 0) Error("rem: division by zero");
 
    if (da < db) {
       r = a;
@@ -1451,7 +1197,7 @@ void rem(ZZX& r, const ZZX& a, const ZZX& b)
       ZZ m;
       PseudoRem(r1, a, b);
       power(m, LeadCoeff(b), da-db+1);
-      if (!divide(r, r1, m)) ArithmeticError("rem: remainder not defined over ZZ");
+      if (!divide(r, r1, m)) Error("rem: remainder not defined over ZZ");
    }
 }
 
@@ -1662,8 +1408,8 @@ long PlainDivide(ZZX& qq, const ZZX& aa, const ZZX& bb)
       qp[i] = t;
 
       for (j = db-1; j >= 0; j--) {
-         mul(s, t, bp[j]);
-         sub(xp[i+j], xp[i+j], s);
+	 mul(s, t, bp[j]);
+	 sub(xp[i+j], xp[i+j], s);
       }
    }
 
@@ -1957,7 +1703,7 @@ void trunc(ZZX& x, const ZZX& a, long m)
 // x = a % X^m, output may alias input
 
 {
-   if (m < 0) LogicError("trunc: bad args");
+   if (m < 0) Error("trunc: bad args");
 
    if (&x == &a) {
       if (x.rep.length() > m) {
@@ -1987,21 +1733,19 @@ void trunc(ZZX& x, const ZZX& a, long m)
 
 void LeftShift(ZZX& x, const ZZX& a, long n)
 {
+   if (n < 0) {
+      if (n < -NTL_MAX_LONG) Error("overflow in LeftShift");
+      RightShift(x, a, -n);
+      return;
+   }
+
+   if (n >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in LeftShift");
+
    if (IsZero(a)) {
       clear(x);
       return;
    }
-
-   if (n < 0) {
-      if (n < -NTL_MAX_LONG)  
-         clear(x);
-      else
-         RightShift(x, a, -n);
-      return;
-   }
-
-   if (NTL_OVERFLOW(n, 1, 0))
-      ResourceError("overflow in LeftShift");
 
    long m = a.rep.length();
 
@@ -2018,13 +1762,8 @@ void LeftShift(ZZX& x, const ZZX& a, long n)
 
 void RightShift(ZZX& x, const ZZX& a, long n)
 {
-   if (IsZero(a)) {
-      clear(x);
-      return;
-   }
-
    if (n < 0) {
-      if (n < -NTL_MAX_LONG) ResourceError("overflow in RightShift");
+      if (n < -NTL_MAX_LONG) Error("overflow in RightShift");
       LeftShift(x, a, -n);
       return;
    }
@@ -2053,7 +1792,7 @@ void RightShift(ZZX& x, const ZZX& a, long n)
 void TraceVec(vec_ZZ& S, const ZZX& ff)
 {
    if (!IsOne(LeadCoeff(ff)))
-      LogicError("TraceVec: bad args");
+      Error("TraceVec: bad args");
 
    ZZX f;
    f = ff;
@@ -2211,7 +1950,7 @@ void MinPolyMod(ZZX& gg, const ZZX& a, const ZZX& f)
 
 {
    if (!IsOne(LeadCoeff(f)) || deg(f) < 1 || deg(a) >= deg(f))
-      LogicError("MinPolyMod: bad args");
+      Error("MinPolyMod: bad args");
 
    if (IsZero(a)) {
       SetX(gg);
@@ -2398,7 +2137,7 @@ void XGCD(ZZ& rr, ZZX& ss, ZZX& tt, const ZZX& a, const ZZX& b,
 void NormMod(ZZ& x, const ZZX& a, const ZZX& f, long deterministic)
 {
    if (!IsOne(LeadCoeff(f)) || deg(a) >= deg(f) || deg(f) <= 0)
-      LogicError("norm: bad args");
+      Error("norm: bad args");
 
    if (IsZero(a)) {
       clear(x);
@@ -2411,7 +2150,7 @@ void NormMod(ZZ& x, const ZZX& a, const ZZX& f, long deterministic)
 void TraceMod(ZZ& res, const ZZX& a, const ZZX& f)
 {
    if (!IsOne(LeadCoeff(f)) || deg(a) >= deg(f) || deg(f) <= 0)
-      LogicError("trace: bad args");
+      Error("trace: bad args");
 
    vec_ZZ S;
 
@@ -2436,7 +2175,7 @@ void discriminant(ZZ& d, const ZZX& a, long deterministic)
    diff(a1, a);
    resultant(res, a, a1, deterministic);
    if (!divide(res, res, LeadCoeff(a)))
-      LogicError("discriminant: inexact division");
+      Error("discriminant: inexact division");
 
    m = m & 3;
    if (m >= 2)
@@ -2450,7 +2189,7 @@ void MulMod(ZZX& x, const ZZX& a, const ZZX& b, const ZZX& f)
 {
    if (deg(a) >= deg(f) || deg(b) >= deg(f) || deg(f) == 0 || 
        !IsOne(LeadCoeff(f)))
-      LogicError("MulMod: bad args");
+      Error("MulMod: bad args");
 
    ZZX t;
    mul(t, a, b);
@@ -2460,7 +2199,7 @@ void MulMod(ZZX& x, const ZZX& a, const ZZX& b, const ZZX& f)
 void SqrMod(ZZX& x, const ZZX& a, const ZZX& f)
 {
    if (deg(a) >= deg(f) || deg(f) == 0 || !IsOne(LeadCoeff(f)))
-      LogicError("MulMod: bad args");
+      Error("MulMod: bad args");
 
    ZZX t;
    sqr(t, a);
@@ -2483,7 +2222,7 @@ void MulByXModAux(ZZX& h, const ZZX& a, const ZZX& f)
    m = deg(a);
 
    if (m >= n || n == 0 || !IsOne(LeadCoeff(f)))
-      LogicError("MulByXMod: bad args");
+      Error("MulByXMod: bad args");
 
    if (m < 0) {
       clear(h);
@@ -2555,13 +2294,13 @@ void EuclLength1(ZZ& l, const ZZX& a)
 long CharPolyBound(const ZZX& a, const ZZX& f)
 // This computes a bound on the size of the
 // coefficients of the characterstic polynomial.
-// It uses the characterization of the char poly as
+// It use the relation characterization of the char poly as
 // resultant_y(f(y), x-a(y)), and then interpolates this
 // through complex primimitive (deg(f)+1)-roots of unity.
 
 {
    if (IsZero(a) || IsZero(f))
-      LogicError("CharPolyBound: bad args");
+      Error("CharPolyBound: bad args");
 
    ZZ t1, t2, t;
    EuclLength1(t1, a);
@@ -2578,11 +2317,20 @@ void SetCoeff(ZZX& x, long i, long a)
    if (a == 1) 
       SetCoeff(x, i);
    else {
-      NTL_ZZRegister(aa);
+      static ZZ aa;
       conv(aa, a);
       SetCoeff(x, i, aa);
    }
 }
+
+// vectors
+
+NTL_vector_impl(ZZX,vec_ZZX)
+
+NTL_eq_vector_impl(ZZX,vec_ZZX)
+
+NTL_io_vector_impl(ZZX,vec_ZZX)
+
 
 
 void CopyReverse(ZZX& x, const ZZX& a, long hi)
@@ -2614,9 +2362,7 @@ void CopyReverse(ZZX& x, const ZZX& a, long hi)
 
 void reverse(ZZX& x, const ZZX& a, long hi)
 {
-   if (hi < 0) { clear(x); return; }
-   if (NTL_OVERFLOW(hi, 1, 0))
-      ResourceError("overflow in reverse");
+   if (hi < -1) Error("reverse: bad args");
 
    if (&x == &a) {
       ZZX tmp;
@@ -2651,14 +2397,14 @@ void NewtonInvTrunc(ZZX& c, const ZZX& a, long e)
    else if (ConstTerm(a) == -1)
       x = -1;
    else
-      ArithmeticError("InvTrunc: non-invertible constant term");
+      Error("InvTrunc: non-invertible constant term");
 
    if (e == 1) {
       conv(c, x);
       return;
    }
 
-   vec_long E;
+   static vec_long E;
    E.SetLength(0);
    append(E, e);
    while (e > 1) {
@@ -2671,10 +2417,10 @@ void NewtonInvTrunc(ZZX& c, const ZZX& a, long e)
    ZZX g, g0, g1, g2;
 
 
-   g.rep.SetMaxLength(E[0]);
-   g0.rep.SetMaxLength(E[0]);
-   g1.rep.SetMaxLength((3*E[0]+1)/2);
-   g2.rep.SetMaxLength(E[0]);
+   g.rep.SetMaxLength(e);
+   g0.rep.SetMaxLength(e);
+   g1.rep.SetMaxLength((3*e+1)/2);
+   g2.rep.SetMaxLength(e);
 
    conv(g, x);
 
@@ -2705,15 +2451,15 @@ void NewtonInvTrunc(ZZX& c, const ZZX& a, long e)
 
 void InvTrunc(ZZX& c, const ZZX& a, long e)
 {
-   if (e < 0) LogicError("InvTrunc: bad args");
+   if (e < 0) Error("InvTrunc: bad args");
 
    if (e == 0) {
       clear(c);
       return;
    }
 
-   if (NTL_OVERFLOW(e, 1, 0))
-      ResourceError("overflow in InvTrunc");
+   if (e >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in InvTrunc");
 
    NewtonInvTrunc(c, a, e);
 }

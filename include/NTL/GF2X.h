@@ -6,19 +6,12 @@
 #include <NTL/ZZ.h>
 #include <NTL/WordVector.h>
 #include <NTL/vec_GF2.h>
-#include <NTL/Lazy.h>
 
 NTL_OPEN_NNS
 
-class GF2E; // forward declaration
-class GF2XModulus;
 
 class GF2X {
 public:
-typedef GF2 coeff_type;
-typedef GF2E residue_type;
-typedef GF2XModulus modulus_type;
-
 
 WordVector xrep;
 
@@ -26,10 +19,6 @@ typedef vec_GF2 VectorBaseType;
 
 
 GF2X() { }
-
-explicit GF2X(long a) { *this = a; }
-explicit GF2X(GF2 a) { *this = a; }
-
 ~GF2X() { }
 
 GF2X(INIT_SIZE_TYPE, long n);
@@ -47,38 +36,12 @@ void kill() { xrep.kill(); }
 
 void SetMaxLength(long n);
 
-
-
-void SetLength(long n);
-ref_GF2 operator[](long i);
-const GF2 operator[](long i) const;
-
-
-
-
-NTL_THREAD_LOCAL static long HexOutput;
+static long HexOutput;
 
 inline GF2X(long i, GF2 c);
 inline GF2X(long i, long c);
 
-inline GF2X(INIT_MONO_TYPE, long i, GF2 c);
-inline GF2X(INIT_MONO_TYPE, long i, long c);
-inline GF2X(INIT_MONO_TYPE, long i);
-
 GF2X(GF2X& x, INIT_TRANS_TYPE) : xrep(x.xrep, INIT_TRANS) { }
-// This should only be used for simple, local variables
-// that are not be subject to special memory management.
-
-
-void swap(GF2X& x) { xrep.swap(x.xrep); }
-
-
-
-
-
-// mainly for internal consumption by GF2XWatcher
-
-void KillBig() { xrep.KillBig(); }
 
 };
 
@@ -89,11 +52,11 @@ long IsOne(const GF2X& a);
 
 long IsX(const GF2X& a);
 
-const GF2 coeff(const GF2X& a, long i);
+GF2 coeff(const GF2X& a, long i);
 
-const GF2 LeadCoeff(const GF2X& a);
+GF2 LeadCoeff(const GF2X& a);
 
-const GF2 ConstTerm(const GF2X& a);
+GF2 ConstTerm(const GF2X& a);
 
 
 inline void clear(GF2X& x) 
@@ -108,15 +71,13 @@ void SetCoeff(GF2X& x, long i);
 void SetCoeff(GF2X& x, long i, GF2 a);
 void SetCoeff(GF2X& x, long i, long a);
 
-inline GF2X::GF2X(long i, GF2 a) { SetCoeff(*this, i, a); }
-inline GF2X::GF2X(long i, long a) { SetCoeff(*this, i, a); }
+inline GF2X::GF2X(long i, GF2 a)
+   { SetCoeff(*this, i, a); }
 
-inline GF2X::GF2X(INIT_MONO_TYPE, long i, GF2 a) { SetCoeff(*this, i, a); }
-inline GF2X::GF2X(INIT_MONO_TYPE, long i, long a) { SetCoeff(*this, i, a); }
-inline GF2X::GF2X(INIT_MONO_TYPE, long i) { SetCoeff(*this, i); }
+inline GF2X::GF2X(long i, long a)
+   { SetCoeff(*this, i, a); }
 
-
-inline void swap(GF2X& a, GF2X& b) { a.swap(b); }
+void swap(GF2X& a, GF2X& b);
 
 long deg(const GF2X& aa);
 
@@ -229,7 +190,6 @@ inline void operator--(GF2X& x, int) { sub(x, x, 1); }
 
 
 void mul(GF2X& c, const GF2X& a, const GF2X& b);
-void OldMul(GF2X& c, const GF2X& a, const GF2X& b);
 
 void mul(GF2X& x, const GF2X& a, GF2 b);
 void mul(GF2X& x, const GF2X& a, long b);
@@ -282,7 +242,12 @@ inline GF2X power(const GF2X& a, long e)
 
 
 
-typedef Vec<GF2X> vec_GF2X;
+NTL_vector_decl(GF2X,vec_GF2X)
+
+NTL_io_vector_decl(GF2X,vec_GF2X)
+
+NTL_eq_vector_decl(GF2X,vec_GF2X)
+
 
 void LeftShift(GF2X& c, const GF2X& a, long n);
 inline GF2X LeftShift(const GF2X& a, long n)
@@ -341,6 +306,7 @@ class GF2XModulus {
 
 public:
    GF2XModulus();
+   ~GF2XModulus();
 
    GF2XModulus(const GF2XModulus&);  
    GF2XModulus& operator=(const GF2XModulus&); 
@@ -369,15 +335,14 @@ public:
    long method; 
 
    vec_GF2X stab;
+   _ntl_ulong **stab_ptr;
+   long *stab_cnt;
 
-   UniqueArray<unsigned long *> stab_ptr;
-   UniqueArray<long> stab_cnt;
-   UniqueArray<unsigned long> stab1;
-
+   _ntl_ulong *stab1;
 
    GF2X h0, f0;
 
-   OptionalVal< Lazy<vec_GF2> > tracevec;
+   vec_GF2 tracevec;
 
 }; 
 
@@ -514,13 +479,7 @@ void GCD(GF2X& d, const GF2X& a, const GF2X& b);
 inline GF2X GCD(const GF2X& a, const GF2X& b)
    { GF2X x; GCD(x, a, b); NTL_OPT_RETURN(GF2X, x); }
 
-void OldGCD(GF2X& d, const GF2X& a, const GF2X& b);
-
-
 void XGCD(GF2X& d, GF2X& s, GF2X& t, const GF2X& a, const GF2X& b);
-
-void OldXGCD(GF2X& d, GF2X& s, GF2X& t, const GF2X& a, const GF2X& b);
-
    
 void diff(GF2X& c, const GF2X& a);
 inline GF2X diff(const GF2X& a)
@@ -548,24 +507,6 @@ inline GF2X to_GF2X(const ZZ& a)
 
 inline vec_GF2 to_vec_GF2(const GF2X& a)
    { vec_GF2 x; conv(x, a); NTL_OPT_RETURN(vec_GF2, x); }
-
-
-
-/* additional legacy conversions for v6 conversion regime */
-
-inline void conv(GF2X& x, const GF2X& a)
-   { x = a; }
-
-class ZZX;
-void conv(GF2X& x, const ZZX& a);
-void conv(ZZX& x, const GF2X& a);
-
-
-/* ------------------------------------- */
-
-
-
-
 
 inline GF2X& GF2X::operator=(long a)
    { conv(*this, a); return *this; }
@@ -653,9 +594,6 @@ inline GF2X IrredPolyMod(const GF2X& g, const GF2XModulus& F, long m)
 
 void MinPolyInternal(GF2X& h, const GF2X& x, long m);
 
-void OldMinPolyInternal(GF2X& h, const GF2X& x, long m);
-
-
 
 struct GF2XTransMultiplier {
    GF2X f0, fbi, b;
@@ -671,7 +609,7 @@ inline vec_GF2 UpdateMap(const vec_GF2& a,
                        const GF2XTransMultiplier& B, const GF2XModulus& F)
    { vec_GF2 x; UpdateMap(x, a, B, F); NTL_OPT_RETURN(vec_GF2, x); }
 
-inline void project(ref_GF2 x, const vec_GF2& a, const GF2X& b)
+inline void project(GF2& x, const vec_GF2& a, const GF2X& b)
    { x = to_GF2(InnerProduct(a.rep, b.xrep)); }
 
 inline GF2 project(const vec_GF2& a, const GF2X& b)
@@ -700,12 +638,12 @@ inline vec_GF2 TraceVec(const GF2X& f)
    { vec_GF2 x; TraceVec(x, f); NTL_OPT_RETURN(vec_GF2, x); }
 
 
-void TraceMod(ref_GF2 x, const GF2X& a, const GF2XModulus& F);
+void TraceMod(GF2& x, const GF2X& a, const GF2XModulus& F);
 
 inline GF2 TraceMod(const GF2X& a, const GF2XModulus& F)
    { GF2 x; TraceMod(x, a, F); return x; }
 
-void TraceMod(ref_GF2 x, const GF2X& a, const GF2X& f);
+void TraceMod(GF2& x, const GF2X& a, const GF2X& f);
 
 inline GF2 TraceMod(const GF2X& a, const GF2X& f)
    { GF2 x; TraceMod(x, a, f); return x; }
@@ -723,38 +661,6 @@ inline long NumBits(const GF2X& a)
 
 inline long NumBytes(const GF2X& a)
    { return (NumBits(a) + 7)/8; }
-
-
-
-// GF2X scratch variabes
-
-
-class GF2XWatcher {
-public:
-   GF2X& watched;
-   explicit
-   GF2XWatcher(GF2X& _watched) : watched(_watched) {}
-
-   ~GF2XWatcher() { watched.KillBig(); } 
-};
-
-#define NTL_GF2XRegister(x) NTL_THREAD_LOCAL static GF2X x; GF2XWatcher _WATCHER__ ## x(x)
-
-
-
-// RAII for HexOutput
-
-class GF2XHexOutputPush {
-private:
-   long OldHexOutput;
-
-   GF2XHexOutputPush(const GF2XHexOutputPush&); // disable
-   void operator=(const GF2XHexOutputPush&); // disable
-
-public:
-   GF2XHexOutputPush() : OldHexOutput(GF2X::HexOutput) { }
-   ~GF2XHexOutputPush() { GF2X::HexOutput = OldHexOutput; }
-};
 
 
 NTL_CLOSE_NNS

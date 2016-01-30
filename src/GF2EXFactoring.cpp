@@ -4,8 +4,10 @@
 #include <NTL/vec_GF2XVec.h>
 #include <NTL/fileio.h>
 #include <NTL/FacVec.h>
-#include <NTL/new.h>
 
+#include <stdio.h>
+
+#include <NTL/new.h>
 
 NTL_START_IMPL
 
@@ -34,7 +36,7 @@ void SquareFreeDecomp(vec_pair_GF2EX_long& u, const GF2EX& ff)
    GF2EX f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      LogicError("SquareFreeDecomp: bad args");
+      Error("SquareFreeDecomp: bad args");
 
    GF2EX r, t, v, tmp1;
    long m, j, finished, done;
@@ -388,7 +390,7 @@ void FindRoots(vec_GF2E& x, const GF2EX& ff)
    GF2EX f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      LogicError("FindRoots: bad args");
+      Error("FindRoots: bad args");
 
    x.SetMaxLength(deg(f));
    x.SetLength(0);
@@ -399,7 +401,7 @@ void FindRoots(vec_GF2E& x, const GF2EX& ff)
 static
 void RandomBasisElt(GF2EX& g, const vec_long& D, const vec_GF2XVec& M)
 {
-   GF2X t1, t2;
+   static GF2X t1, t2;
 
    long n = D.length();
 
@@ -427,8 +429,6 @@ void RandomBasisElt(GF2EX& g, const vec_long& D, const vec_GF2XVec& M)
          conv(v[j], t1);
       }
    }
-
-   g.normalize();
 }
 
 
@@ -527,7 +527,7 @@ void SFBerlekamp(vec_GF2EX& factors, const GF2EX& ff, long verbose)
    GF2EX f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      LogicError("SFBerlekamp: bad args");
+      Error("SFBerlekamp: bad args");
 
    if (deg(f) == 0) {
       factors.SetLength(0);
@@ -634,7 +634,7 @@ void berlekamp(vec_pair_GF2EX_long& factors, const GF2EX& f, long verbose)
    vec_GF2EX x;
 
    if (!IsOne(LeadCoeff(f)))
-      LogicError("berlekamp: bad args");
+      Error("berlekamp: bad args");
 
    
    if (verbose) { cerr << "square-free decomposition..."; t = GetTime(); }
@@ -727,7 +727,7 @@ void TraceMap(GF2EX& w, const GF2EX& a, long d, const GF2EXModulus& F,
               const GF2EX& b)
 
 {
-   if (d < 0) LogicError("TraceMap: bad args");
+   if (d < 0) Error("TraceMap: bad args");
 
    GF2EX y, z, t;
 
@@ -766,7 +766,7 @@ void TraceMap(GF2EX& w, const GF2EX& a, long d, const GF2EXModulus& F,
 
 void PowerCompose(GF2EX& y, const GF2EX& h, long q, const GF2EXModulus& F)
 {
-   if (q < 0) LogicError("powerCompose: bad args");
+   if (q < 0) Error("powerCompose: bad args");
 
    GF2EX z(INIT_SIZE, F.n);
    long sw;
@@ -842,7 +842,6 @@ long ProbIrredTest(const GF2EX& f, long iter)
 }
 
 
-NTL_THREAD_LOCAL
 long GF2EX_BlockingFactor = 10;
 
 void DDF(vec_pair_GF2EX_long& factors, const GF2EX& ff, const GF2EX& hh, 
@@ -852,7 +851,7 @@ void DDF(vec_pair_GF2EX_long& factors, const GF2EX& ff, const GF2EX& hh,
    GF2EX h = hh;
 
    if (!IsOne(LeadCoeff(f)))
-      LogicError("DDF: bad args");
+      Error("DDF: bad args");
 
    factors.SetLength(0);
 
@@ -989,7 +988,7 @@ void EDF(vec_GF2EX& factors, const GF2EX& ff, const GF2EX& bb,
    GF2EX b = bb;
 
    if (!IsOne(LeadCoeff(f)))
-      LogicError("EDF: bad args");
+      Error("EDF: bad args");
 
    long n = deg(f);
    long r = n/d;
@@ -1030,7 +1029,7 @@ void SFCanZass(vec_GF2EX& factors, const GF2EX& ff, long verbose)
    GF2EX f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      LogicError("SFCanZass: bad args");
+      Error("SFCanZass: bad args");
 
    if (deg(f) == 0) {
       factors.SetLength(0);
@@ -1100,7 +1099,7 @@ void SFCanZass(vec_GF2EX& factors, const GF2EX& ff, long verbose)
 void CanZass(vec_pair_GF2EX_long& factors, const GF2EX& f, long verbose)
 {
    if (!IsOne(LeadCoeff(f)))
-      LogicError("CanZass: bad args");
+      Error("CanZass: bad args");
 
    double t;
    vec_pair_GF2EX_long sfd;
@@ -1293,10 +1292,10 @@ void FindRoot(GF2E& root, const GF2EX& ff)
    f = ff;
    
    if (!IsOne(LeadCoeff(f)))
-      LogicError("FindRoot: bad args");
+      Error("FindRoot: bad args");
 
    if (deg(f) == 0)
-      LogicError("FindRoot: bad args");
+      Error("FindRoot: bad args");
 
 
    while (deg(f) > 1) {
@@ -1566,10 +1565,10 @@ void RecBuildIrred(GF2EX& f, long u, const FacVec& fvec)
 void BuildIrred(GF2EX& f, long n)
 {
    if (n <= 0)
-      LogicError("BuildIrred: n must be positive");
+      Error("BuildIrred: n must be positive");
 
-   if (NTL_OVERFLOW(n, 1, 0))
-      ResourceError("overflow in BuildIrred");
+   if (n >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in BuildIrred");
 
    if (n == 1) {
       SetX(f);
@@ -1589,10 +1588,10 @@ void BuildIrred(GF2EX& f, long n)
 void BuildIrred(GF2EX& f, long n)
 {
    if (n <= 0)
-      LogicError("BuildIrred: n must be positive");
+      Error("BuildIrred: n must be positive");
 
-   if (NTL_OVERFLOW(n, 1, 0))
-      ResourceError("overflow in BuildIrred");
+   if (n >= (1L << (NTL_BITS_PER_LONG-4)))
+      Error("overflow in BuildIrred");
 
    if (n == 1) {
       SetX(f);
@@ -1630,17 +1629,22 @@ void BuildRandomIrred(GF2EX& f, const GF2EX& g)
 
 /************* NEW DDF ****************/
 
-NTL_THREAD_LOCAL long GF2EX_GCDTableSize = 4;
-NTL_THREAD_LOCAL double GF2EXFileThresh = NTL_FILE_THRESH;
-NTL_THREAD_LOCAL static vec_GF2EX *BabyStepFile = 0;
-NTL_THREAD_LOCAL static vec_GF2EX *GiantStepFile = 0;
-NTL_THREAD_LOCAL static long use_files;
+long GF2EX_GCDTableSize = 4;
+char GF2EX_stem[256] = "";
+
+double GF2EXFileThresh = 256;
+
+static vec_GF2EX BabyStepFile;
+static vec_GF2EX GiantStepFile;
+
+static long use_files;
 
 
 static
 double CalcTableSize(long n, long k)
 {
-   double sz = GF2E::storage();
+   double sz = GF2E::WordLength()+4;
+   sz = sz * sizeof(_ntl_ulong);
    sz = sz * n;
    sz = sz + NTL_VECTOR_HEADER_SIZE + sizeof(vec_GF2E);
    sz = sz * k;
@@ -1652,7 +1656,7 @@ double CalcTableSize(long n, long k)
 
 static
 void GenerateBabySteps(GF2EX& h1, const GF2EX& f, const GF2EX& h, long k,
-                       FileList& flist, long verbose)
+                       long verbose)
 
 {
    double t;
@@ -1680,22 +1684,23 @@ void GenerateBabySteps(GF2EX& h1, const GF2EX& f, const GF2EX& h, long k,
 
    long i;
 
-   GF2XHexOutputPush push;
+   long HexOutput = GF2X::HexOutput;
    GF2X::HexOutput = 1;
 
    if (!use_files) {
-      (*BabyStepFile).SetLength(k-1);
+      BabyStepFile.kill();
+      BabyStepFile.SetLength(k-1);
    }
 
    for (i = 1; i <= k-1; i++) {
       if (use_files) {
          ofstream s;
-         OpenWrite(s, FileName("baby", i), flist);
+         OpenWrite(s, FileName(GF2EX_stem, "baby", i));
          s << h1 << "\n";
-         CloseWrite(s);
+         s.close();
       }
       else
-         (*BabyStepFile)(i) = h1;
+         BabyStepFile(i) = h1;
 
       CompMod(h1, h1, H, F);
       if (verbose) cerr << "+";
@@ -1704,12 +1709,12 @@ void GenerateBabySteps(GF2EX& h1, const GF2EX& f, const GF2EX& h, long k,
    if (verbose)
       cerr << (GetTime()-t) << "\n";
 
+   GF2X::HexOutput = HexOutput;
 }
 
 
 static
-void GenerateGiantSteps(const GF2EX& f, const GF2EX& h, long l, 
-                        FileList& flist, long verbose)
+void GenerateGiantSteps(const GF2EX& f, const GF2EX& h, long l, long verbose)
 {
 
    double t;
@@ -1738,22 +1743,23 @@ void GenerateGiantSteps(const GF2EX& f, const GF2EX& h, long l,
 
    long i;
 
-   GF2XHexOutputPush push;
+   long HexOutput = GF2X::HexOutput; 
    GF2X::HexOutput = 1;
 
    if (!use_files) {
-      (*GiantStepFile).SetLength(l);
+      GiantStepFile.kill();
+      GiantStepFile.SetLength(l);
    }
 
    for (i = 1; i <= l-1; i++) {
       if (use_files) {
          ofstream s;
-         OpenWrite(s, FileName("giant", i), flist);
+         OpenWrite(s, FileName(GF2EX_stem, "giant", i));
          s << h1 << "\n";
-         CloseWrite(s);
+         s.close();
       }
       else
-         (*GiantStepFile)(i) = h1;
+         GiantStepFile(i) = h1;
 
       CompMod(h1, h1, H, F);
       if (verbose) cerr << "+";
@@ -1761,16 +1767,37 @@ void GenerateGiantSteps(const GF2EX& f, const GF2EX& h, long l,
 
    if (use_files) {
       ofstream s;
-      OpenWrite(s, FileName("giant", i), flist);
+      OpenWrite(s, FileName(GF2EX_stem, "giant", i));
       s << h1 << "\n";
-      CloseWrite(s);
+      s.close();
    }
    else
-      (*GiantStepFile)(i) = h1;
+      GiantStepFile(i) = h1;
 
    if (verbose)
       cerr << (GetTime()-t) << "\n";
+
+   GF2X::HexOutput = HexOutput;
 }
+
+static
+void FileCleanup(long k, long l)
+{
+   if (use_files) {
+      long i;
+   
+      for (i = 1; i <= k-1; i++)
+         remove(FileName(GF2EX_stem, "baby", i));
+   
+      for (i = 1; i <= l; i++)
+         remove(FileName(GF2EX_stem, "giant", i));
+   }
+   else {
+      BabyStepFile.kill();
+      GiantStepFile.kill();
+   }
+}
+
 
 static
 void NewAddFactor(vec_pair_GF2EX_long& u, const GF2EX& g, long m, long verbose)
@@ -1840,11 +1867,14 @@ void FetchGiantStep(GF2EX& g, long gs, const GF2EXModulus& F)
 {
    if (use_files) {
       ifstream s;
-      OpenRead(s, FileName("giant", gs));
-      NTL_INPUT_CHECK_ERR(s >> g);
+   
+      OpenRead(s, FileName(GF2EX_stem, "giant", gs));
+   
+      s >> g;
+      s.close();
    }
    else
-      g = (*GiantStepFile)(gs);
+      g = GiantStepFile(gs);
 
    rem(g, g, F);
 }
@@ -1861,11 +1891,12 @@ void FetchBabySteps(vec_GF2EX& v, long k)
    for (i = 1; i <= k-1; i++) {
       if (use_files) {
          ifstream s;
-         OpenRead(s, FileName("baby", i));
-         NTL_INPUT_CHECK_ERR(s >> v[i]);
+         OpenRead(s, FileName(GF2EX_stem, "baby", i));
+         s >> v[i];
+         s.close();
       }
       else
-         v[i] = (*BabyStepFile)(i);
+         v[i] = BabyStepFile(i);
    }
 }
       
@@ -2062,7 +2093,7 @@ void NewDDF(vec_pair_GF2EX_long& factors,
 
 {
    if (!IsOne(LeadCoeff(f)))
-      LogicError("NewDDF: bad args");
+      Error("NewDDF: bad args");
 
    if (deg(f) == 0) {
       factors.SetLength(0);
@@ -2071,10 +2102,13 @@ void NewDDF(vec_pair_GF2EX_long& factors,
 
    if (deg(f) == 1) {
       factors.SetLength(0);
-      append(factors, cons(f, 1L));
+      append(factors, cons(f, 1));
       return;
    }
 
+   if (!GF2EX_stem[0])
+      sprintf(GF2EX_stem, "ddf-%ld", RandomBnd(10000));
+      
    long B = deg(f)/2;
    long k = SqrRoot(B);
    long l = (B+k-1)/k;
@@ -2086,22 +2120,15 @@ void NewDDF(vec_pair_GF2EX_long& factors,
    else
       use_files = 0;
 
-   FileList flist;
+   GenerateBabySteps(h1, f, h, k, verbose);
 
-   vec_GF2EX local_BabyStepFile;
-   vec_GF2EX local_GiantStepFile;
-
-   BabyStepFile = &local_BabyStepFile;
-   GiantStepFile = &local_GiantStepFile;
-
-
-   GenerateBabySteps(h1, f, h, k, flist, verbose);
-
-   GenerateGiantSteps(f, h1, l, flist, verbose);
+   GenerateGiantSteps(f, h1, l, verbose);
 
    vec_pair_GF2EX_long u;
    GiantRefine(u, f, k, l, verbose);
    BabyRefine(factors, u, k, l, verbose);
+
+   FileCleanup(k, l);
 }
 
 long IterComputeDegree(const GF2EX& h, const GF2EXModulus& F)

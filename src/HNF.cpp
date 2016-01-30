@@ -90,7 +90,7 @@ void HNF(mat_ZZ& W, const mat_ZZ& A_in, const ZZ& D_in)
       negate(D, D);
 
    if (n == 0 || m == 0 || D == 0)
-      LogicError("HNF: bad input");
+      Error("HNF: bad input");
 
    W.SetDims(m, m);
    clear(W);

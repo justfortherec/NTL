@@ -9,6 +9,8 @@ NTL_START_IMPL
 
 GF2EInfoT::GF2EInfoT(const GF2X& NewP)
 {
+   ref_count = 1;
+
    build(p, NewP);
 
    if (p.size == 1) {
@@ -57,32 +59,57 @@ GF2EInfoT::GF2EInfoT(const GF2X& NewP)
    else 
       DivCross = 75;
 
+   _card_init = 0;
    _card_exp = p.n;
 }
 
 
 const ZZ& GF2E::cardinality()
 {
-   if (!GF2EInfo) LogicError("GF2E::cardinality: undefined modulus");
+   if (!GF2EInfo) Error("GF2E::cardinality: undefined modulus");
 
-   do { // NOTE: thread safe lazy init
-      Lazy<ZZ>::Builder builder(GF2EInfo->_card);
-      if (!builder()) break;
-      UniquePtr<ZZ> p;
-      p.make();
-      power(*p, 2, GF2EInfo->_card_exp);
-      builder.move(p);
-   } while (0);
+   if (!GF2EInfo->_card_init) {
+      power(GF2EInfo->_card, 2, GF2EInfo->_card_exp);
+      GF2EInfo->_card_init = 1;
+   }
 
-   return *GF2EInfo->_card;
+   return GF2EInfo->_card;
 }
 
 
 
 
-NTL_THREAD_LOCAL
-SmartPtr<GF2EInfoT> GF2EInfo = 0; 
+GF2EInfoT *GF2EInfo = 0; 
 
+
+
+typedef GF2EInfoT *GF2EInfoPtr;
+
+
+static 
+void CopyPointer(GF2EInfoPtr& dst, GF2EInfoPtr src)
+{
+   if (src == dst) return;
+
+   if (dst) {
+      dst->ref_count--;
+
+      if (dst->ref_count < 0) 
+         Error("internal error: negative GF2EContext ref_count");
+
+      if (dst->ref_count == 0) delete dst;
+   }
+
+   if (src) {
+      src->ref_count++;
+
+      if (src->ref_count < 0) 
+         Error("internal error: GF2EContext ref_count overflow");
+   }
+
+   dst = src;
+}
+   
 
 
 
@@ -93,41 +120,68 @@ void GF2E::init(const GF2X& p)
 }
 
 
+GF2EContext::GF2EContext(const GF2X& p)
+{
+   ptr = NTL_NEW_OP GF2EInfoT(p);
+}
+
+GF2EContext::GF2EContext(const GF2EContext& a)
+{
+   ptr = 0;
+   CopyPointer(ptr, a.ptr);
+}
+
+GF2EContext& GF2EContext::operator=(const GF2EContext& a)
+{
+   CopyPointer(ptr, a.ptr);
+   return *this;
+}
+
+
+GF2EContext::~GF2EContext()
+{
+   CopyPointer(ptr, 0);
+}
+
 void GF2EContext::save()
 {
-   ptr = GF2EInfo;
+   CopyPointer(ptr, GF2EInfo);
 }
 
 void GF2EContext::restore() const
 {
-   GF2EInfo = ptr;
+   CopyPointer(GF2EInfo, ptr);
 }
 
 
 
 GF2EBak::~GF2EBak()
 {
-   if (MustRestore) c.restore();
+   if (MustRestore)
+      CopyPointer(GF2EInfo, ptr);
+
+   CopyPointer(ptr, 0);
 }
 
 void GF2EBak::save()
 {
-   c.save();
-   MustRestore = true;
+   MustRestore = 1;
+   CopyPointer(ptr, GF2EInfo);
 }
+
 
 
 void GF2EBak::restore()
 {
-   c.restore();
-   MustRestore = false;
+   MustRestore = 0;
+   CopyPointer(GF2EInfo, ptr);
 }
 
 
 
 const GF2E& GF2E::zero()
 {
-   NTL_THREAD_LOCAL static GF2E z(INIT_NO_ALLOC);
+   static GF2E z(GF2E_NoAlloc);
    return z;
 }
 
@@ -137,7 +191,7 @@ istream& operator>>(istream& s, GF2E& x)
 {
    GF2X y;
 
-   NTL_INPUT_CHECK_RET(s, s >> y);
+   s >> y;
    conv(x, y);
 
    return s;

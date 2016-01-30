@@ -46,23 +46,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 
 
-#ifdef __INTEL_COMPILER
-#pragma float_control(precise,on)
-#endif
-
-// NOTE: the above will force the Intel compiler to adhere to
-// language standards, which it does not do by default
-
 #include <NTL/quad_float.h>
 #include <NTL/RR.h>
 
-#include <cfloat>
+#include <float.h>
 
 #include <NTL/new.h>
 
 NTL_START_IMPL
 
-#if (NTL_EXT_DOUBLE && defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__)))
+#if (defined(__GNUC__) && NTL_EXT_DOUBLE && (defined(__i386__) || defined(__i486__) || defined(__i586__)))
 
 #if (!defined(NTL_X86_FIX) && !defined(NTL_NO_X86_FIX))
 
@@ -88,7 +81,7 @@ NTL_START_IMPL
 
 
 #define START_FIX \
-  volatile unsigned short __old_cw, __new_cw; \
+  unsigned short __old_cw, __new_cw; \
   asm volatile ("fnstcw %0":"=m" (__old_cw)); \
   __new_cw = (__old_cw & ~0x300) | 0x200; \
   asm volatile ("fldcw %0": :"m" (__new_cw));
@@ -110,9 +103,9 @@ void normalize(quad_float& z, const double& xhi, const double& xlo)
 START_FIX
    DOUBLE u, v;
 
-   u = xhi + xlo; 
-   v = xhi - u;    
-   v = v + xlo;    
+   u = xhi + xlo;
+   v = xhi - u;
+   v = v + xlo;
 
    z.hi = u;
    z.lo = v;
@@ -122,62 +115,68 @@ END_FIX
 
 
 #if (NTL_BITS_PER_LONG >= NTL_DOUBLE_PRECISION)
-
-
 quad_float to_quad_float(long n)
 {
+START_FIX
    DOUBLE xhi, xlo;
+   DOUBLE u, v;
 
-   xhi = TrueDouble(n);
+   xhi = double(n);
 
    // Because we are assuming 2's compliment integer
    // arithmetic, the following prevents long(xhi) from overflowing.
 
    if (n > 0)
-      xlo = TrueDouble(n+long(-xhi));
+      xlo = double(n+long(-xhi));
    else
-      xlo = TrueDouble(n-long(xhi));
+      xlo = double(n-long(xhi));
 
    // renormalize...just to be safe
-
-   quad_float z;
-   normalize(z, xhi, xlo);
-   return z;
+  
+   u = xhi + xlo;
+   v = xhi - u;
+   v = v + xlo;
+END_FIX
+   return quad_float(u, v);
 }
 
 quad_float to_quad_float(unsigned long n)
 {
+START_FIX
    DOUBLE xhi, xlo, t;
+   DOUBLE u, v;
 
    const double bnd = double(1L << (NTL_BITS_PER_LONG-2))*4.0;
 
-   xhi = TrueDouble(n);
+   xhi = double(n);
    
    if (xhi >= bnd)
       t = xhi - bnd;
    else
       t = xhi;
 
-   // we use the "to_long" function here to be as portable as possible.
-   long llo = to_long(n - (unsigned long)(t));
-   xlo = TrueDouble(llo);
+   long llo = long(n - (unsigned long)(t));
+   xlo = double(llo);
 
-   quad_float z;
-   normalize(z, xhi, xlo);
-   return z;
+   // renormalize...just to be safe
+
+   u = xhi + xlo;
+   v = xhi - u;
+   v = v + xlo;
+END_FIX
+   return quad_float(u, v);
 }
 #endif
 
 
-NTL_THREAD_LOCAL
 long quad_float::oprec = 10;
 
 void quad_float::SetOutputPrecision(long p)
 {
    if (p < 1) p = 1;
 
-   if (NTL_OVERFLOW(p, 1, 0)) 
-      ResourceError("quad_float: output precision too big");
+   if (p >= (1L << (NTL_BITS_PER_LONG-4))) 
+      Error("quad_float: output precision too big");
 
    oprec = p;
 }
@@ -294,7 +293,7 @@ END_FIX
 
 quad_float& operator -=(quad_float& x, const quad_float& y ) {
 START_FIX
-        DOUBLE    H, h, T, t, S, s, e, f;
+	DOUBLE    H, h, T, t, S, s, e, f;
         DOUBLE    t1, yhi, ylo;
 
         yhi = -y.hi;
@@ -353,70 +352,33 @@ END_FIX
 }
 
 
-
-#if (NTL_FMA_DETECTED)
-
-double quad_float_zero = 0;
-
-static inline
-double Protect(double x) { return x + quad_float_zero; }
-
-#else
-
-
-static inline
-double Protect(double x) { return x; }
-
-
-#endif
-
-// NOTE: this is really sick: some compilers will issue FMA
-// (fused mul add) instructions which will break correctness.
-// C99 standard is supposed to prevent this across separate
-// statements, but C++ standard doesn't guarantee much at all.
-// In any case, gcc does not even implement the C99 standard
-// correctly.  One could disable this by compiling with
-// an appropriate flag: -mno-fma works for gcc, while -no-fma works
-// for icc.  icc and MSVC++ also support pragmas to do this:
-// #pragma fp_contract(off).  There is also a compiler flag for
-// gcc: -ffp-contract=off, but -mno-fma seems more widely supported.
-// These flags work for clang, as well.
-//
-// But in any case, I'd rather not mess with getting these flags right.
-// By calling Protect(a*b), this has the effect of forcing the
-// compiler to compute a*b + 0.  Assuming the compiler otherwise
-// does not perform any re-association, this should do the trick.
-// There is a small performance penalty, but it should be reasonable.
-
-
-
 quad_float operator *(const quad_float& x,const quad_float& y ) {
 START_FIX
   DOUBLE hx, tx, hy, ty, C, c;
   DOUBLE t1, t2;
 
-  C = Protect(NTL_QUAD_FLOAT_SPLIT*x.hi);
+  C = NTL_QUAD_FLOAT_SPLIT*x.hi;
   hx = C-x.hi;
-  c = Protect(NTL_QUAD_FLOAT_SPLIT*y.hi);
+  c = NTL_QUAD_FLOAT_SPLIT*y.hi;
   hx = C-hx;
   tx = x.hi-hx;
   hy = c-y.hi;
-  C = Protect(x.hi*y.hi);
+  C = x.hi*y.hi;
   hy = c-hy;
   ty = y.hi-hy;
 
   // c = ((((hx*hy-C)+hx*ty)+tx*hy)+tx*ty)+(x.hi*y.lo+x.lo*y.hi);
   
-  t1 = Protect(hx*hy);
+  t1 = hx*hy;
   t1 = t1-C;
-  t2 = Protect(hx*ty);
+  t2 = hx*ty;
   t1 = t1+t2;
-  t2 = Protect(tx*hy);
+  t2 = tx*hy;
   t1 = t1+t2;
-  t2 = Protect(tx*ty);
+  t2 = tx*ty;
   c = t1+t2;
-  t1 = Protect(x.hi*y.lo);
-  t2 = Protect(x.lo*y.hi);
+  t1 = x.hi*y.lo;
+  t2 = x.lo*y.hi;
   t1 = t1+t2;
   c = c + t1;
 
@@ -434,28 +396,28 @@ START_FIX
   DOUBLE hx, tx, hy, ty, C, c;
   DOUBLE t1, t2;
 
-  C = Protect(NTL_QUAD_FLOAT_SPLIT*x.hi);
+  C = NTL_QUAD_FLOAT_SPLIT*x.hi;
   hx = C-x.hi;
-  c = Protect(NTL_QUAD_FLOAT_SPLIT*y.hi);
+  c = NTL_QUAD_FLOAT_SPLIT*y.hi;
   hx = C-hx;
   tx = x.hi-hx;
   hy = c-y.hi;
-  C = Protect(x.hi*y.hi);
+  C = x.hi*y.hi;
   hy = c-hy;
   ty = y.hi-hy;
 
   // c = ((((hx*hy-C)+hx*ty)+tx*hy)+tx*ty)+(x.hi*y.lo+x.lo*y.hi);
   
-  t1 = Protect(hx*hy);
+  t1 = hx*hy;
   t1 = t1-C;
-  t2 = Protect(hx*ty);
+  t2 = hx*ty;
   t1 = t1+t2;
-  t2 = Protect(tx*hy);
+  t2 = tx*hy;
   t1 = t1+t2;
-  t2 = Protect(tx*ty);
+  t2 = tx*ty;
   c = t1+t2;
-  t1 = Protect(x.hi*y.lo);
-  t2 = Protect(x.lo*y.hi);
+  t1 = x.hi*y.lo;
+  t2 = x.lo*y.hi;
   t1 = t1+t2;
   c = c + t1;
 
@@ -476,25 +438,25 @@ START_FIX
   DOUBLE t1;
 
   C = x.hi/y.hi;
-  c = Protect(NTL_QUAD_FLOAT_SPLIT*C);
+  c = NTL_QUAD_FLOAT_SPLIT*C;
   hc = c-C;
-  u = Protect(NTL_QUAD_FLOAT_SPLIT*y.hi);
+  u = NTL_QUAD_FLOAT_SPLIT*y.hi;
   hc = c-hc;
   tc = C-hc;
   hy = u-y.hi;
-  U = Protect(C * y.hi);
+  U = C * y.hi;
   hy = u-hy;
   ty = y.hi-hy;
 
   // u = (((hc*hy-U)+hc*ty)+tc*hy)+tc*ty;
 
-  u = Protect(hc*hy);
+  u = hc*hy;
   u = u-U;
-  t1 = Protect(hc*ty);
+  t1 = hc*ty;
   u = u+t1;
-  t1 = Protect(tc*hy);
+  t1 = tc*hy;
   u = u+t1;
-  t1 = Protect(tc*ty);
+  t1 = tc*ty;
   u = u+t1;
 
   // c = ((((x.hi-U)-u)+x.lo)-C*y.lo)/y.hi;
@@ -502,7 +464,7 @@ START_FIX
   c = x.hi-U;
   c = c-u;
   c = c+x.lo;
-  t1 = Protect(C*y.lo);
+  t1 = C*y.lo;
   c = c - t1;
   c = c/y.hi;
   
@@ -520,25 +482,25 @@ START_FIX
   DOUBLE t1;
 
   C = x.hi/y.hi;
-  c = Protect(NTL_QUAD_FLOAT_SPLIT*C);
+  c = NTL_QUAD_FLOAT_SPLIT*C;
   hc = c-C;
-  u = Protect(NTL_QUAD_FLOAT_SPLIT*y.hi);
+  u = NTL_QUAD_FLOAT_SPLIT*y.hi;
   hc = c-hc;
   tc = C-hc;
   hy = u-y.hi;
-  U = Protect(C * y.hi);
+  U = C * y.hi;
   hy = u-hy;
   ty = y.hi-hy;
 
   // u = (((hc*hy-U)+hc*ty)+tc*hy)+tc*ty;
 
-  u = Protect(hc*hy);
+  u = hc*hy;
   u = u-U;
-  t1 = Protect(hc*ty);
+  t1 = hc*ty;
   u = u+t1;
-  t1 = Protect(tc*hy);
+  t1 = tc*hy;
   u = u+t1;
-  t1 = Protect(tc*ty);
+  t1 = tc*ty;
   u = u+t1;
 
   // c = ((((x.hi-U)-u)+x.lo)-C*y.lo)/y.hi;
@@ -546,7 +508,7 @@ START_FIX
   c = x.hi-U;
   c = c-u;
   c = c+x.lo;
-  t1 = Protect(C*y.lo);
+  t1 = C*y.lo;
   c = c - t1;
   c = c/y.hi;
   
@@ -563,7 +525,7 @@ END_FIX
 
 quad_float sqrt(const quad_float& y) {
   if (y.hi < 0.0) 
-    ArithmeticError("quad_float: square root of negative number");
+    Error("Quad: attempto to take square root of negative number");
   if (y.hi == 0.0) return quad_float(0.0,0.0);
 
   double c;
@@ -575,18 +537,18 @@ START_FIX
   DOUBLE p,q,hx,tx,u,uu,cc;
   DOUBLE t1;
 
-  p = Protect(NTL_QUAD_FLOAT_SPLIT*c); 
+  p = NTL_QUAD_FLOAT_SPLIT*c; 
   hx = (c-p); 
   hx = hx+p; 
   tx = c-hx;
-  p = Protect(hx*hx);
-  q = Protect(hx*tx);
+  p = hx*hx;
+  q = hx*tx;
   q = q+q;
 
   u = p+q;
   uu = p-u;
   uu = uu+q;
-  t1 = Protect(tx*tx);
+  t1 = tx*tx;
   uu = uu+t1;
 
 
@@ -611,7 +573,7 @@ void power(quad_float& z, const quad_float& a, long e)
    unsigned long k;
 
    if (e < 0)
-      k = -((unsigned long) e);
+      k = -e;
    else
       k = e;
 
@@ -636,30 +598,36 @@ void power(quad_float& z, const quad_float& a, long e)
 
 void power2(quad_float& z, long e)
 {
-   z.hi = _ntl_ldexp(1.0, e);
+   int ee;
+
+   ee = e;
+   if (ee != e) Error("overflow in power2");
+
+   z.hi = ldexp(1.0, ee);
    z.lo = 0;
 }
 
 
 long to_long(const quad_float& x)
 {
-   double fhi, flo;
+   DOUBLE fhi, flo;
+   long lhi, llo;
 
    fhi = floor(x.hi);
 
-   if (fhi == x.hi) 
-      flo = floor(x.lo);
-   else
-      flo = 0;
-
-   // the following code helps to prevent unnecessary integer overflow,
-   // and guarantees that to_long(to_quad_float(a)) == a, for all long a,
-   // provided long's are not too wide.
-
    if (fhi > 0)
-      return long(flo) - long(-fhi);
+      lhi = -long(-fhi);
    else
-      return long(fhi) + long(flo);
+      lhi = long(fhi);
+
+   if (fhi == x.hi) {
+      flo = floor(x.lo);
+      llo = long(flo);
+   }
+   else
+      llo = 0;
+
+   return lhi + llo;
 }
 
 
@@ -670,7 +638,7 @@ long to_long(const quad_float& x)
 
 void conv(quad_float& z, const ZZ& a)
 {
-   double xhi, xlo;
+   DOUBLE xhi, xlo;
 
    conv(xhi, a);
 
@@ -680,7 +648,7 @@ void conv(quad_float& z, const ZZ& a)
       return;
    }
 
-   NTL_ZZRegister(t);
+   static ZZ t;
 
    conv(t, xhi);
    sub(t, a, t);
@@ -689,18 +657,15 @@ void conv(quad_float& z, const ZZ& a)
 
    normalize(z, xhi, xlo);
 
-   // The following is just paranoia.
    if (fabs(z.hi) < NTL_FDOUBLE_PRECISION && z.lo != 0)
-      LogicError("internal error: ZZ to quad_float conversion");
+      Error("internal error: ZZ to quad_float conversion");
 } 
 
 void conv(ZZ& z, const quad_float& x)
 { 
-   NTL_ZZRegister(t1);
-   NTL_ZZRegister(t2);
-   NTL_ZZRegister(t3);
+   static ZZ t1, t2, t3;
 
-   double fhi, flo;
+   DOUBLE fhi, flo;
 
    fhi = floor(x.hi);
 
@@ -727,40 +692,46 @@ ostream& operator<<(ostream& s, const quad_float& a)
       return s;
    }
 
-   RRPush push;
-   RROutputPush opush;
+   long old_p = RR::precision();
+   long old_op = RR::OutputPrecision();
 
    RR::SetPrecision(long(3.33*quad_float::oprec) + 10);
    RR::SetOutputPrecision(quad_float::oprec);
 
-   NTL_THREAD_LOCAL static RR t;
+   static RR t;
 
    conv(t, a);
    s << t;
+
+   RR::SetPrecision(old_p);
+   RR::SetOutputPrecision(old_op);
 
    return s;
 }
 
 istream& operator>>(istream& s, quad_float& x)
 {
-   RRPush push;
+   long old_p = RR::precision();
    RR::SetPrecision(4*NTL_DOUBLE_PRECISION);
 
-   NTL_THREAD_LOCAL static RR t;
-   NTL_INPUT_CHECK_RET(s, s >> t);
+   static RR t;
+   s >> t;
    conv(x, t);
 
+   RR::SetPrecision(old_p);
    return s;
 }
 
 void random(quad_float& x)
 {
-   RRPush push;
+   long old_p = RR::precision();
    RR::SetPrecision(4*NTL_DOUBLE_PRECISION);
 
-   NTL_THREAD_LOCAL static RR t;
+   static RR t;
    random(t);
    conv(x, t);
+
+   RR::SetPrecision(old_p);
 }
 
 quad_float random_quad_float()
@@ -803,15 +774,20 @@ END_FIX
 
 quad_float floor(const quad_float& x)
 {
-   double fhi = floor(x.hi);
+   DOUBLE fhi, flo, u, v;
+
+   fhi = floor(x.hi);
 
    if (fhi != x.hi)
       return quad_float(fhi, 0.0);
    else {
-      double flo = floor(x.lo);
-      quad_float z;
-      normalize(z, fhi, flo);
-      return z;
+      flo = floor(x.lo);
+START_FIX
+      u = fhi + flo;
+      v = fhi - u;
+      v = v + flo;
+END_FIX
+      return quad_float(u, v);
    }
 }
 
@@ -841,35 +817,27 @@ long compare(const quad_float& x, const quad_float& y)
 }
 
 
-quad_float fabs(const quad_float& x) 
-{ if (x.hi>=0.0) return x; else return -x; }
+quad_float fabs(const quad_float& x) { if (x.hi>=0.0) return x; else return -x; }
 
 quad_float to_quad_float(const char *s)
 {
    quad_float x;
-
-   RRPush push;
+   long old_p = RR::precision();
    RR::SetPrecision(4*NTL_DOUBLE_PRECISION);
 
-   NTL_THREAD_LOCAL static RR t;
+   static RR t;
    conv(t, s);
    conv(x, t);
 
+   RR::SetPrecision(old_p);
    return x;
 }
 
 
 quad_float ldexp(const quad_float& x, long exp) { // x*2^exp
-   double xhi, xlo;
-   quad_float z;
-
-   xhi = _ntl_ldexp(x.hi, exp);
-   xlo = _ntl_ldexp(x.lo, exp);
-
-   normalize(z, xhi, xlo);
-   return z;
+  if (int(exp) != exp) Error("quad_float ldexp: overflow");
+  return quad_float(ldexp(x.hi,int(exp)),ldexp(x.lo,int(exp)));
 }
-
 
 quad_float exp(const quad_float& x) { // New version 97 Aug 05
 /*
@@ -887,16 +855,14 @@ quad_float exp(const quad_float& x) { // New version 97 Aug 05
 !  Now y.loge(2) will be less than 0.3466 in absolute value.
 !  This is halved and a Pade aproximation is used to approximate e^x over
 !  the region (-0.1733, +0.1733).   This approximation is then squared.
+!  WARNING: No overflow checks!
 */
   if (x.hi<DBL_MIN_10_EXP*2.302585092994045684017991) 
     return to_quad_float(0.0);
   if (x.hi>DBL_MAX_10_EXP*2.302585092994045684017991) {
-    ResourceError("exp(quad_float): overflow");
+    Error("exp(quad_float): overflow");
   }
-
-  // changed this from "const" to "static" in v5.3, since "const"
-  // causes the initialization to be performed with *every* invocation.
-  NTL_THREAD_LOCAL static quad_float Log2 = 
+  const quad_float Log2 = 
     to_quad_float("0.6931471805599453094172321214581765680755");
 
   quad_float y,temp,ysq,sum1,sum2;
@@ -924,7 +890,7 @@ quad_float exp(const quad_float& x) { // New version 97 Aug 05
 
 quad_float log(const quad_float& t) { // Newton method. See Bailey, MPFUN
   if (t.hi <= 0.0) {
-    ArithmeticError("log(quad_float): argument must be positive");
+    Error("log(quad_float): argument must be positive");
   }
   double s1 = log(t.hi);
   ForceToMem(&s1);  // Again, this is fairly paranoid.
@@ -950,4 +916,3 @@ long operator!=(const quad_float& x, const quad_float& y)
 
 
 NTL_END_IMPL
-

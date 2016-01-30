@@ -3,12 +3,18 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-// FIXME: it would be nice to have a per-thread
-// timing function, but it seems very difficult
-// to get a cross-platform solution to this.
+#if (defined(__cplusplus))
+extern "C"
+#else
+extern
+#endif
+int getrusage(int, struct rusage*);
 
+#if (defined(__cplusplus) && !defined(NTL_CXX_ONLY))
+extern "C" double _ntl_GetTime();
+#endif
 
-double _ntl_GetTime()
+double _ntl_GetTime(void)
 {
    struct rusage used;
 

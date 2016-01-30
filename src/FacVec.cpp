@@ -2,9 +2,11 @@
 #include <NTL/FacVec.h>
 #include <NTL/ZZ.h>
 
+#include <NTL/new.h>
 
 NTL_START_IMPL
 
+NTL_vector_impl(IntFactor,vec_IntFactor)
 
 static
 void swap(IntFactor& x, IntFactor& y)
@@ -34,10 +36,7 @@ void FindMin(FacVec& v, long lo, long hi)
 
 void FactorInt(FacVec& fvec, long n)
 {
-   if (n <= 1) LogicError("internal error: FactorInt(FacVec,long n) with n<=1");
-
-   if (NTL_OVERFLOW(n, 1, 0))
-      ResourceError("internal error: FactorInt(FacVec,long n) with n too large");
+   if (n <= 1) Error("internal error: FactorInt(FacVec,long n) with n<=1");
 
    long NumFactors;
    long q;

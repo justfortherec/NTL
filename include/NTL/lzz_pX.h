@@ -5,7 +5,6 @@
 #include <NTL/vector.h>
 #include <NTL/lzz_p.h>
 #include <NTL/vec_lzz_p.h>
-#include <NTL/Lazy.h>
 
 NTL_OPEN_NNS
 
@@ -20,14 +19,14 @@ NTL_OPEN_NNS
 #define NTL_zz_pX_BERMASS_CROSSOVER (zz_pX_bermass_crossover[zz_pInfo->PrimeCnt])
 #define NTL_zz_pX_TRACE_CROSSOVER (zz_pX_trace_crossover[zz_pInfo->PrimeCnt])
 
-extern const long zz_pX_mod_crossover[];
-extern const long zz_pX_mul_crossover[];
-extern const long zz_pX_newton_crossover[];
-extern const long zz_pX_div_crossover[];
-extern const long zz_pX_halfgcd_crossover[];
-extern const long zz_pX_gcd_crossover[];
-extern const long zz_pX_bermass_crossover[];
-extern const long zz_pX_trace_crossover[];
+extern long zz_pX_mod_crossover[];
+extern long zz_pX_mul_crossover[];
+extern long zz_pX_newton_crossover[];
+extern long zz_pX_div_crossover[];
+extern long zz_pX_halfgcd_crossover[];
+extern long zz_pX_gcd_crossover[];
+extern long zz_pX_bermass_crossover[];
+extern long zz_pX_trace_crossover[];
 
 
 
@@ -47,27 +46,16 @@ Use the member function normalize() to strip leading zeros.
 
 **************************************************************/
 
-
-class zz_pE; // forward declaration
-class zz_pXModulus;
-class fftRep;
-class zz_pXMultiplier;
-
-
 class zz_pX {
-public:
-typedef zz_p coeff_type;
-typedef zz_pE residue_type;
-typedef zz_pXModulus modulus_type;
-typedef zz_pXMultiplier multiplier_type;
-typedef fftRep fft_type;
 
+public:
 
 vec_zz_p rep;
 
 typedef vec_zz_p VectorBaseType;
 
 
+public:
 
 /***************************************************************
 
@@ -76,11 +64,10 @@ typedef vec_zz_p VectorBaseType;
 ****************************************************************/
 
 
-zz_pX() {}
+zz_pX()
 //  initial value 0
 
-explicit zz_pX(long a) { *this = a; }
-explicit zz_pX(zz_p a) { *this = a; }
+   { }
 
 
 zz_pX(INIT_SIZE_TYPE, long n) { rep.SetMaxLength(n); }
@@ -90,10 +77,6 @@ zz_pX(const zz_pX& a) : rep(a.rep) { }
 
 inline zz_pX(long i, zz_p c);
 inline zz_pX(long i, long c);
-
-inline zz_pX(INIT_MONO_TYPE, long i, zz_p c);
-inline zz_pX(INIT_MONO_TYPE, long i, long c);
-inline zz_pX(INIT_MONO_TYPE, long i);
 
 zz_pX& operator=(const zz_pX& a) 
    { rep = a.rep; return *this; }
@@ -117,19 +100,6 @@ void kill()
 // free space held by this polynomial.  Value becomes 0.
 
    { rep.kill(); }
-
-
-
-void SetLength(long n) { rep.SetLength(n); }
-zz_p& operator[](long i) { return rep[i]; }
-const zz_p& operator[](long i) const { return rep[i]; }
-
-
-void swap(zz_pX& x)
-{
-   rep.swap(x.rep);
-}
-
 
 static const zz_pX& zero();
 
@@ -175,33 +145,31 @@ inline long deg(const zz_pX& a) { return a.rep.length() - 1; }
 // degree of a polynomial.
 // note that the zero polynomial has degree -1.
 
-const zz_p coeff(const zz_pX& a, long i);
+zz_p coeff(const zz_pX& a, long i);
 // zero if i not in range
 
 void GetCoeff(zz_p& x, const zz_pX& a, long i);
 // x = a[i], or zero if i not in range
 
-const zz_p LeadCoeff(const zz_pX& a);
+zz_p LeadCoeff(const zz_pX& a);
 // zero if a == 0
 
-const zz_p ConstTerm(const zz_pX& a);
+zz_p ConstTerm(const zz_pX& a);
 // zero if a == 0
 
 void SetCoeff(zz_pX& x, long i, zz_p a);
 // x[i] = a, error is raised if i < 0
 
 void SetCoeff(zz_pX& x, long i, long a);
-// x[i] = a, error is raised if i < 0
+
+inline zz_pX::zz_pX(long i, zz_p a) 
+   { SetCoeff(*this, i, a); }
+
+inline zz_pX::zz_pX(long i, long a) 
+   { SetCoeff(*this, i, a); }
 
 void SetCoeff(zz_pX& x, long i);
 // x[i] = 1, error is raised if i < 0
-
-inline zz_pX::zz_pX(long i, zz_p a) { SetCoeff(*this, i, a); }
-inline zz_pX::zz_pX(long i, long a) { SetCoeff(*this, i, a); }
-
-inline zz_pX::zz_pX(INIT_MONO_TYPE, long i, zz_p a) { SetCoeff(*this, i, a); }
-inline zz_pX::zz_pX(INIT_MONO_TYPE, long i, long a) { SetCoeff(*this, i, a); }
-inline zz_pX::zz_pX(INIT_MONO_TYPE, long i) { SetCoeff(*this, i); }
 
 void SetX(zz_pX& x);
 // x is set to the monomial X
@@ -222,7 +190,7 @@ inline void set(zz_pX& x)
 inline void swap(zz_pX& x, zz_pX& y)
 // swap x & y (only pointers are swapped)
 
-   { x.swap(y); }
+   { swap(x.rep, y.rep); }
 
 void random(zz_pX& x, long n);
 inline zz_pX random_zz_pX(long n)
@@ -332,18 +300,6 @@ inline zz_pX& zz_pX::operator=(zz_p a)
 
 inline zz_pX& zz_pX::operator=(long a)
    { conv(*this, a); return *this; }
-
-
-/* additional legacy conversions for v6 conversion regime */
-
-inline void conv(zz_pX& x, const zz_pX& a)
-   { x = a; }
-
-inline void conv(vec_zz_p& x, const zz_pX& a)
-   { x = a.rep; }
-
-
-/* ------------------------------------- */
 
 
 
@@ -570,20 +526,18 @@ class fftRep {
 public:
    long k;                // a 2^k point representation
    long MaxK;             // maximum space allocated
+   long *tbl[4];
    long NumPrimes;
-   UniqueArray<long> tbl[4];
 
-   fftRep() : k(-1), MaxK(-1), NumPrimes(0) { }
-
-   fftRep(const fftRep& R) : k(-1), MaxK(-1), NumPrimes(0)
-   { *this = R; }
-
-   fftRep(INIT_SIZE_TYPE, long InitK) : k(-1), MaxK(-1), NumPrimes(0)
-   { SetSize(InitK); }
-
+   fftRep(const fftRep&); 
    fftRep& operator=(const fftRep&); 
+
    void SetSize(long NewK);
-   void DoSetSize(long NewK, long NewNumPrimes);
+
+   fftRep() { k = MaxK = -1; NumPrimes = zz_pInfo->NumPrimes; }
+   fftRep(INIT_SIZE_TYPE, long InitK) 
+   { k = MaxK = -1; NumPrimes = zz_pInfo->NumPrimes; SetSize(InitK); }
+   ~fftRep();
 };
 
 
@@ -853,9 +807,7 @@ public:
    fftRep FRep; // 2^k point rep of f
                 // H = rev((rev(f))^{-1} rem X^{n-1})
    fftRep HRep; // 2^l point rep of H
-
-   OptionalVal< Lazy<vec_zz_p> > tracevec;  
-   // extra level of indirection to ensure relocatability
+   vec_zz_p tracevec;  // mutable
 
    zz_pXModulus(const zz_pX& ff);
 
@@ -1034,7 +986,12 @@ inline zz_pX interpolate(const vec_zz_p& a, const vec_zz_p& b)
 
 *****************************************************************/
 
-typedef Vec<zz_pX> vec_zz_pX;
+NTL_vector_decl(zz_pX,vec_zz_pX)
+
+NTL_eq_vector_decl(zz_pX,vec_zz_pX)
+
+NTL_io_vector_decl(zz_pX,vec_zz_pX)
+
 
 
 /**********************************************************
@@ -1093,7 +1050,7 @@ struct zz_pXArgument {
    vec_zz_pX H;
 };
 
-NTL_THREAD_LOCAL extern long zz_pXArgBound;
+extern long zz_pXArgBound;
 
 
 void build(zz_pXArgument& H, const zz_pX& h, const zz_pXModulus& F, long m);
@@ -1106,42 +1063,6 @@ void CompMod(zz_pX& x, const zz_pX& g, const zz_pXArgument& H,
 inline zz_pX
 CompMod(const zz_pX& g, const zz_pXArgument& H, const zz_pXModulus& F)
    { zz_pX x; CompMod(x, g, H, F); NTL_OPT_RETURN(zz_pX, x); }
-
-
-
-// experimental variant that yields a faster ModComp
-// Usage:
-//    zz_pXArgument H;
-//    build(H, h, F);
-//    zz_pXAltArgument H1;
-//    build(H1, H, F);  // this keeps a pointer to H, so H must remain alive
-//    CompMod(x, g, H1, F);  // x = g(h) mod f
-
-struct zz_pXAltArgument {
-
-   const zz_pXArgument *orig;
-   zz_pXAltArgument() : orig(0) {}
-
-#ifdef NTL_HAVE_LL_TYPE
-   long strategy;
-
-   long n, m;
-   Vec< Vec<long> > mem;
-   Vec<long*> row;
-
-   Vec< Vec<double> > dmem;
-   Vec<double*> drow;
-
-   sp_ll_reduce_struct pinv_LL;
-   sp_reduce_struct pinv_L;
-#endif
-};
-
-
-void build(zz_pXAltArgument& altH, const zz_pXArgument& H, const zz_pXModulus& F);
-void CompMod(zz_pX& x, const zz_pX& g, const zz_pXAltArgument& A, 
-             const zz_pXModulus& F);
-
 
 
 
@@ -1316,9 +1237,6 @@ void CharPolyMod(zz_pX& g, const zz_pX& a, const zz_pX& f);
 
 inline zz_pX CharPolyMod(const zz_pX& a, const zz_pX& f)
    { zz_pX x; CharPolyMod(x, a, f); NTL_OPT_RETURN(zz_pX, x); }
-
-
-
 
 
 NTL_CLOSE_NNS

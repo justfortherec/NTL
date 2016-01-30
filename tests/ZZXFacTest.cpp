@@ -63,7 +63,7 @@ int main(int argc, char **argv)
    mul(f1, f1, c);
 
    if (f != f1)
-      TerminalError("FACTORIZATION INCORRECT!!!");
+      Error("FACTORIZATION INCORRECT!!!");
 
 
 

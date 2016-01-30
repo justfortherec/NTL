@@ -74,7 +74,7 @@ inline vec_pair_zz_pX_long berlekamp(const zz_pX& f, long verbose=0)
 
 
 
-NTL_THREAD_LOCAL extern long zz_pX_BlockingFactor;
+extern long zz_pX_BlockingFactor;
 // Controls GCD blocking for DDF.
 
 
@@ -90,7 +90,7 @@ inline vec_pair_zz_pX_long DDF(const zz_pX& f, const zz_pX& h,
 // Obsolete: see NewDDF, below.
 
 
-NTL_THREAD_LOCAL extern long zz_pX_GCDTableSize; /* = 4 */
+extern long zz_pX_GCDTableSize; /* = 4 */
 // Controls GCD blocking for NewDDF
 
 
