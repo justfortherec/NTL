@@ -13,13 +13,7 @@ Provides vectors over zz_p, along with some related operations.
 #include "vec_zz.h"
 #include <NTL/vector.h>
 
-NTL_vector_decl(zz_p,vec_zz_p)
-
-NTL_io_vector_decl(zz_p,vec_zz_p)
-// I/O operators are defined
-
-NTL_eq_vector_decl(zz_p,vec_zz_p)
-// operators == and != are defined
+typedef Vec<zz_p> vec_zz_p; // backward compatibility
 
 void mul(vec_zz_p& x, const vec_zz_p& a, zz_p b);
 void mul(vec_zz_p& x, const vec_zz_p& a, long b);
@@ -56,7 +50,7 @@ void InnerProduct(zz_p& x, const vec_zz_p& a, const vec_zz_p& b);
 
 void InnerProduct(zz_p& x, const vec_zz_p& a, const vec_zz_p& b,
                   long offset);
-// x = sum_{i=offset}^n a[i]*b[i-offset], where n = min(a.length(),
+// x = sum_{i=offset}^{n-1} a[i]*b[i-offset], where n = min(a.length(),
 // b.length()+offset)
 
 long CRT(vec_ZZ& a, ZZ& prod, const vec_zz_p& A);

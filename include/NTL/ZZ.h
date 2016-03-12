@@ -5,6 +5,7 @@
 
 
 
+
 /********************************************************
 
    LIP INTERFACE 
@@ -16,26 +17,38 @@
 
 #include <NTL/lip.h>
 #include <NTL/tools.h>
+#include <NTL/vector.h>
+#include <NTL/SmartPtr.h>
+#include <NTL/sp_arith.h>
 
 NTL_OPEN_NNS
 
 
-
+class ZZ_p; // forward declaration
+class ZZX;
 
 class ZZ {
 public:
-
-NTL_verylong rep; // This is currently public for "emergency" situations
-                   // May be private in future versions.
-
-
-ZZ() 
-// initial value is 0.
-
-{ rep = 0; }
+typedef ZZ_p residue_type;
+typedef ZZX poly_type;
 
 
-ZZ(INIT_SIZE_TYPE, long k)
+
+class Deleter {
+public:
+   static void apply(NTL_verylong& p) { NTL_zfree(&p); }
+};
+
+WrappedPtr<NTL_verylong_body, Deleter> rep;
+// This is currently public for "emergency" situations
+// May be private in future versions.
+
+ZZ() { }
+
+
+explicit ZZ(long a) { *this = a; }
+
+ZZ(INIT_SIZE_TYPE, long k) 
 // initial value is 0, but space is pre-allocated so that numbers
 // x with x.size() <= k can be stored without re-allocation.
 // Call with ZZ(INIT_SIZE, k).
@@ -44,24 +57,22 @@ ZZ(INIT_SIZE_TYPE, long k)
 
 
 {
-   rep = 0;
    NTL_zsetlength(&rep, k); 
 }
 
-ZZ(const ZZ& a)
+ZZ(const ZZ& a) 
 // initial value is a.
 
 {
-   rep = 0;
    NTL_zcopy(a.rep, &rep);
 }
 
 
-ZZ(INIT_VAL_TYPE, long a) { rep = 0; NTL_zintoz(a, &rep); }
-ZZ(INIT_VAL_TYPE, int a) { rep = 0; NTL_zintoz(a, &rep); }
+ZZ(INIT_VAL_TYPE, long a)  { NTL_zintoz(a, &rep); }
+ZZ(INIT_VAL_TYPE, int a)  { NTL_zintoz(a, &rep); }
 
-ZZ(INIT_VAL_TYPE, unsigned long a) { rep = 0; NTL_zuintoz(a, &rep); }
-ZZ(INIT_VAL_TYPE, unsigned int a) { rep = 0; NTL_zuintoz((unsigned long) a, &rep); }
+ZZ(INIT_VAL_TYPE, unsigned long a)  { NTL_zuintoz(a, &rep); }
+ZZ(INIT_VAL_TYPE, unsigned int a)  { NTL_zuintoz((unsigned long) a, &rep); }
 
 inline ZZ(INIT_VAL_TYPE, const char *);
 inline ZZ(INIT_VAL_TYPE, float);
@@ -73,13 +84,15 @@ ZZ& operator=(const ZZ& a) { NTL_zcopy(a.rep, &rep); return *this; }
 ZZ& operator=(long a) { NTL_zintoz(a, &rep); return *this; }
 
 
-~ZZ() { NTL_zfree(&rep); }
-
 void kill()
 // force the space held by this ZZ to be released.
 // The value then becomes 0.
 
-{ NTL_zfree(&rep); }
+{ rep.kill(); }
+
+
+void swap(ZZ& x)
+{ NTL_zswap(&rep, &x.rep); }
 
 void SetSize(long k)
 // pre-allocates space for k-digit numbers (base 2^NTL_ZZ_NBITS);  
@@ -88,9 +101,16 @@ void SetSize(long k)
 { NTL_zsetlength(&rep, k); }
 
 long size() const
+// returns the number of (NTL_ZZ_NBIT-bit) digits of |a|; the size of 0 is 0.
    { return NTL_zsize(rep); }
 
-// returns the number of (NTL_ZZ_NBIT-bit) digits of |a|; the size of 0 is 0.
+long null() const
+// test of rep is null
+   { return !rep; }
+
+long MaxAlloc() const
+// returns max allocation request, possibly rounded up a bit...
+   { return NTL_zmaxalloc(rep); }
 
 
 long SinglePrecision() const
@@ -106,12 +126,35 @@ long WideSinglePrecision() const
 static const ZZ& zero();
 
 
-ZZ(ZZ& x, INIT_TRANS_TYPE) { rep = x.rep; x.rep = 0; }
+ZZ(ZZ& x, INIT_TRANS_TYPE) { rep.swap(x.rep); }
 // used to cheaply hand off memory management of return value,
 // without copying, assuming compiler implements the
-// "return value optimization"
+// "return value optimization".  This is probably obsolete by
+// now, as modern compilers can and should optimize
+// the copy constructor in the situations where this is used.
+// This should only be used for simple, local variables
+// that are not be subject to special memory management.
+
+
+// mainly for internal consumption by ZZWatcher
+
+void KillBig() { if (MaxAlloc() > NTL_RELEASE_THRESH) kill(); }
 
 };
+
+
+class ZZWatcher {
+public:
+   ZZ& watched;
+   explicit
+   ZZWatcher(ZZ& _watched) : watched(_watched) {}
+
+   ~ZZWatcher() { watched.KillBig(); }
+};
+
+#define NTL_ZZRegister(x) NTL_THREAD_LOCAL static ZZ x; ZZWatcher _WATCHER__ ## x(x)
+
+
 
 
 
@@ -132,7 +175,7 @@ inline void set(ZZ& x)
 inline void swap(ZZ& x, ZZ& y)
 // swap the values of x and y (swaps pointers only)
 
-   { NTL_zswap(&x.rep, &y.rep); }
+   { x.swap(y); }
 
 
 inline double log(const ZZ& a)
@@ -165,25 +208,30 @@ inline void conv(ZZ& x, unsigned int a) { NTL_zuintoz((unsigned long)(a), &x.rep
 inline ZZ to_ZZ(unsigned int a) { return ZZ(INIT_VAL, a); }
 
 void conv(ZZ& x, const char *s);
-inline ZZ::ZZ(INIT_VAL_TYPE, const char *s) {  rep = 0; conv(*this, s); }
+inline ZZ::ZZ(INIT_VAL_TYPE, const char *s)  { conv(*this, s); }
 inline ZZ to_ZZ(const char *s) { return ZZ(INIT_VAL, s); }
 
 inline void conv(ZZ& x, double a) { NTL_zdoubtoz(a, &x.rep); }
-inline ZZ::ZZ(INIT_VAL_TYPE, double a) { rep = 0; conv(*this, a); }
+inline ZZ::ZZ(INIT_VAL_TYPE, double a)  { conv(*this, a); }
 inline ZZ to_ZZ(double a) { return ZZ(INIT_VAL, a); }
 
 inline void conv(ZZ& x, float a) { NTL_zdoubtoz(double(a), &x.rep); }
-inline ZZ::ZZ(INIT_VAL_TYPE, float a) { rep = 0; conv(*this, a); }
+inline ZZ::ZZ(INIT_VAL_TYPE, float a)  { conv(*this, a); }
 inline ZZ to_ZZ(float a) { return ZZ(INIT_VAL, a); }
 
 inline void conv(long& x, const ZZ& a) { x = NTL_ztoint(a.rep); }
 inline long to_long(const ZZ& a)  { return NTL_ztoint(a.rep); }
 
-inline void conv(int& x, const ZZ& a) { x = int(NTL_ztoint(a.rep)); }
-inline int to_int(const ZZ& a)  { return int(NTL_ztoint(a.rep)); }
+inline void conv(int& x, const ZZ& a) 
+   { unsigned int res = (unsigned int) NTL_ztouint(a.rep); 
+     x = NTL_UINT_TO_INT(res); }
+
+inline int to_int(const ZZ& a)  
+   { unsigned int res = (unsigned int) NTL_ztouint(a.rep); 
+     return NTL_UINT_TO_INT(res); }
 
 inline void conv(unsigned long& x, const ZZ& a) { x = NTL_ztouint(a.rep); }
-inline long to_ulong(const ZZ& a)  { return NTL_ztouint(a.rep); }
+inline unsigned long to_ulong(const ZZ& a)  { return NTL_ztouint(a.rep); }
 
 inline void conv(unsigned int& x, const ZZ& a) 
    { x = (unsigned int)(NTL_ztouint(a.rep)); }
@@ -414,39 +462,133 @@ inline ZZ& operator*=(ZZ& x, const ZZ& a)
 inline ZZ& operator*=(ZZ& x, long a)
   { mul(x, x, a); return x; }
 
+// x += a*b
+
+inline void
+MulAddTo(ZZ& x, const ZZ& a, long b)
+{
+   NTL_zsaddmul(a.rep, b, &x.rep);
+}
+
+inline void
+MulAddTo(ZZ& x, const ZZ& a, const ZZ& b)
+{
+   NTL_zaddmul(a.rep, b.rep, &x.rep);
+}
+
+// x -= a*b
+
+inline void
+MulSubFrom(ZZ& x, const ZZ& a, long b)
+{
+   NTL_zssubmul(a.rep, b, &x.rep);
+}
+
+inline void
+MulSubFrom(ZZ& x, const ZZ& a, const ZZ& b)
+{
+   NTL_zsubmul(a.rep, b.rep, &x.rep);
+}
+
+
 
 // Special routines for implementing CRT in ZZ_pX arithmetic
+// These are verbose, but fairly boilerplate
 
 
-inline void ZZ_p_crt_struct_init(void **crt_struct, long n, const ZZ& p, 
-                                 const long *primes)
-    { NTL_crt_struct_init(crt_struct, n, p.rep, primes); }
 
-inline void ZZ_p_crt_struct_insert(void *crt_struct, long i, const ZZ& m)
-   { NTL_crt_struct_insert(crt_struct, i, m.rep); }
+class ZZ_CRTStructAdapter;
+class ZZ_RemStructAdapter;
 
-inline void ZZ_p_crt_struct_free(void *crt_struct)
-   { NTL_crt_struct_free(crt_struct); }
+class ZZ_TmpVecAdapter {
+public:
+   UniquePtr<_ntl_tmp_vec> rep;
 
-inline void ZZ_p_crt_struct_eval(void *crt_struct, ZZ& t, const long *a)
-   { NTL_crt_struct_eval(crt_struct, &t.rep, a); }
-
-inline long ZZ_p_crt_struct_special(void *crt_struct)
-   { return NTL_crt_struct_special(crt_struct); }
-
-// Special routines for fast remaindering
+   inline void fetch(const ZZ_CRTStructAdapter&);
+   inline void fetch(ZZ_CRTStructAdapter&);
+   inline void fetch(const ZZ_RemStructAdapter&);
+};
 
 
-inline void ZZ_p_rem_struct_init(void **rem_struct, long n, 
-                                 const ZZ& p, long *primes)
-   { NTL_rem_struct_init(rem_struct, n, p.rep, primes); }
+class ZZ_CRTStructAdapter {
+public:
+   UniquePtr<_ntl_crt_struct> rep;
 
-inline void ZZ_p_rem_struct_free(void *rem_struct)
-   { NTL_rem_struct_free(rem_struct); }
+   void init(long n, const ZZ& p, long (*primes)(long))
+   {
+      rep.reset(_ntl_crt_struct_build(n, p.rep, primes));
+   }
+
+   void insert(long i, const ZZ& m)
+   {
+       rep->insert(i, m.rep);
+   }
+
+   void eval(ZZ& t, const long *a, ZZ_TmpVecAdapter& tmp_vec) const
+   {
+      rep->eval(&t.rep, a, tmp_vec.rep.get());
+   }
+
+   bool special() const
+   { 
+      return rep->special();
+   }
+};
 
 
-inline void ZZ_p_rem_struct_eval(void *rem_struct, long *x, const ZZ& a)
-   { NTL_rem_struct_eval(rem_struct, x, a.rep); }
+class ZZ_RemStructAdapter {
+public:
+   UniquePtr<_ntl_rem_struct> rep;
+
+   void init(long n, const ZZ& p, long (*primes)(long))
+   {
+      rep.reset(_ntl_rem_struct_build(n, p.rep, primes));
+   }
+
+   void eval(long *x, const ZZ& a, ZZ_TmpVecAdapter& tmp_vec) const
+   {
+      rep->eval(x, a.rep, tmp_vec.rep.get());
+   }
+};
+
+
+inline void ZZ_TmpVecAdapter::fetch(const ZZ_CRTStructAdapter& crt_struct)
+{
+   rep.reset(crt_struct.rep->fetch()); 
+}
+
+inline void ZZ_TmpVecAdapter::fetch(ZZ_CRTStructAdapter& crt_struct)
+{
+   rep.reset(crt_struct.rep->extract()); // EXTRACT!!
+}
+
+
+inline void ZZ_TmpVecAdapter::fetch(const ZZ_RemStructAdapter& rem_struct)
+{
+   rep.reset(rem_struct.rep->fetch()); 
+}
+
+
+// montgomery
+class ZZ_ReduceStructAdapter {
+public:
+   UniquePtr<_ntl_reduce_struct> rep;
+
+   void init(const ZZ& p, const ZZ& excess)
+   {
+      rep.reset(_ntl_reduce_struct_build(p.rep, excess.rep));
+   }
+
+   void eval(ZZ& x, ZZ& a) const
+   {
+      rep->eval(&x.rep, &a.rep);
+   }
+
+   void adjust(ZZ& x) const
+   {
+      rep->adjust(&x.rep);
+   }
+};
 
 
 
@@ -809,8 +951,87 @@ inline long ZZ_RoundCorrection(const ZZ& a, long k, long residual)
 ************************************************************/
 
 
+// ================ NEW PRG STUFF =================
+
+
+// Low-level key-derivation 
+
+
+void DeriveKey(unsigned char *key, long klen,  
+               const unsigned char *data, long dlen);
+
+
+
+// Low-level chacha stuff
+
+#define NTL_PRG_KEYLEN (32)
+
+class RandomStream {
+private:
+   _ntl_uint32 state[16];
+   unsigned char buf[64];
+   long pos;
+
+   void do_get(unsigned char *res, long n); 
+
+public:
+   explicit
+   RandomStream(const unsigned char *key);
+
+   // No default constructor 
+   // default copy and assignment
+
+   void get(unsigned char *res, long n) 
+   {
+      // optimize short reads
+      if (n >= 0 && n <= 64-pos) {
+         long i;
+         for (i = 0; i < n; i++) {
+            res[i] = buf[pos+i];
+         }
+         pos += n;
+      }
+      else {
+         do_get(res, n);
+      }
+   }
+
+};
+
+   
+
+
+RandomStream& GetCurrentRandomStream();
+// get reference to the current random by stream --
+// if SetSeed has not been called, it is called with
+// a default value (which should be unique to each
+// process/thread
+
+
 void SetSeed(const ZZ& s);
+void SetSeed(const unsigned char *data, long dlen);
+void SetSeed(const RandomStream& s);
 // initialize random number generator
+// in the first two version, a PRG key is derived from
+// the data using DeriveKey.
+
+
+// RAII for saving/restoring current state of PRG
+
+class RandomStreamPush {
+private: 
+   RandomStream saved;
+
+   RandomStreamPush(const RandomStreamPush&); // disable
+   void operator=(const RandomStreamPush&); // disable
+
+public:
+   RandomStreamPush() : saved(GetCurrentRandomStream()) { }
+   ~RandomStreamPush() { SetSeed(saved); } 
+
+};
+
+
 
 
 void RandomBnd(ZZ& x, const ZZ& n);
@@ -838,10 +1059,16 @@ inline ZZ RandomBits_ZZ(long NumBits)
 // single-precision version of the above
 
 long RandomBnd(long n);
+inline void RandomBnd(long& x, long n) { x = RandomBnd(n); }
 
 long RandomLen_long(long l);
+inline void RandomLen(long& x, long l) { x = RandomLen_long(l); }
 
 long RandomBits_long(long l);
+inline void RandomBits(long& x, long l) { x = RandomBits_long(l); }
+
+
+// specialty routines
 
 unsigned long RandomWord();
 unsigned long RandomBits_ulong(long l);
@@ -1010,6 +1237,7 @@ inline long SqrRoot(long a) { return NTL_zsqrts(a); }
 // All args (other than exponents) are assumed to be in the range 0..n-1.
 
 
+
 inline void AddMod(ZZ& x, const ZZ& a, const ZZ& b, const ZZ& n)
 // x = (a+b)%n
    { NTL_zaddmod(a.rep, b.rep, n.rep, &x.rep); }
@@ -1082,24 +1310,24 @@ inline void SqrMod(ZZ& x, const ZZ& a, const ZZ& n)
 inline ZZ SqrMod(const ZZ& a, const ZZ& n)
    {  ZZ x; SqrMod(x, a, n); NTL_OPT_RETURN(ZZ, x); }
 
-inline void InvMod(ZZ& x, const ZZ& a, const ZZ& n)
-// x = a^{-1} mod n, 0 <= x < n
-// error is raised occurs if inverse not defined
-
-   { NTL_zinvmod(a.rep, n.rep, &x.rep); }
+void InvMod(ZZ& x, const ZZ& a, const ZZ& n);
+// defined in ZZ.c in terms of InvModStatus
 
 inline ZZ InvMod(const ZZ& a, const ZZ& n)
    {  ZZ x; InvMod(x, a, n); NTL_OPT_RETURN(ZZ, x); }
 
 
 inline long InvModStatus(ZZ& x, const ZZ& a, const ZZ& n)
-// if gcd(a,b) = 1, then ReturnValue = 0, x = a^{-1} mod n
+// if gcd(a,n) = 1, then ReturnValue = 0, x = a^{-1} mod n
 // otherwise, ReturnValue = 1, x = gcd(a, n)
 
   { return NTL_zinv(a.rep, n.rep, &x.rep); }
 
 
-inline void PowerMod(ZZ& x, const ZZ& a, const ZZ& e, const ZZ& n)
+void PowerMod(ZZ& x, const ZZ& a, const ZZ& e, const ZZ& n);
+// defined in ZZ.c in terms of LowLevelPowerMod
+
+inline void LowLevelPowerMod(ZZ& x, const ZZ& a, const ZZ& e, const ZZ& n)
    { NTL_zpowermod(a.rep, e.rep, n.rep, &x.rep); }
 
 inline ZZ PowerMod(const ZZ& a, const ZZ& e, const ZZ& n)
@@ -1158,9 +1386,8 @@ inline ZZ SqrRootMod(const ZZ& a, const ZZ& n)
 
 class PrimeSeq {
 
-
-char *movesieve;
-char *movesieve_mem;
+const char *movesieve;
+Vec<char> movesieve_mem;
 long pindex;
 long pshift;
 long exhausted;
@@ -1168,7 +1395,6 @@ long exhausted;
 public:
 
 PrimeSeq();
-~PrimeSeq();
 
 long next();
 // returns next prime in the sequence.
@@ -1205,359 +1431,56 @@ NTL_SNS ostream& operator<<(NTL_SNS ostream& s, const ZZ& a);
 
 
 
-/****************************************************************
-
-    Single-precision modular arithmetic
-
-*****************************************************************/
-
-
-/*
-these routines implement single-precision modular arithmetic.
-If n is the modulus, all inputs should be in the range 0..n-1.
-The number n itself should be in the range 1..2^{NTL_SP_NBITS}-1.
-*/
-
-
-
-inline long AddMod(long a, long b, long n)
-// return (a+b)%n
-
-{
-   long res = a + b;
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   return res;
-#else
-   if (res >= n)
-      return res - n;
-   else
-      return res;
-#endif
-}
-
-inline long SubMod(long a, long b, long n)
-// return (a-b)%n
-
-{
-   long res = a - b;
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   return res;
-#else
-   if (res < 0)
-      return res + n;
-   else
-      return res;
-#endif
-}
-
-inline long NegateMod(long a, long n)
-{
-   return SubMod(0, a, n);
-}
-
-
-#if (defined(NTL_SINGLE_MUL))
-
-
-#if (!defined(NTL_FAST_INT_MUL))
-
-
-inline long MulMod(long a, long b, long n)
-// return (a*b)%n
-
-{
-   double ab;
-   long q, res;
-
-   ab = ((double) a) * ((double) b);
-   q  = (long) (ab/((double) n));  // q could be off by (+/-) 1
-   res = (long) (ab - ((double) q)*((double) n));
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-/*
-The following MulMod takes a fourth argument, ninv,
-which is assumed to equal 1/((double) n).
-It is usually faster than the above.
-*/
-
-inline long MulMod(long a, long b, long n, double ninv)
-{
-   double ab;
-   long q, res;
-
-   ab = ((double) a) * ((double) b);
-   q  = (long) (ab*ninv);   // q could be off by (+/-) 1
-   res = (long) (ab - ((double) q)*((double) n));
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-/*
-Yet another MulMod.
-This time, the 4th argument should be ((double) b)/((double) n).
-*/
-
-inline long MulMod2(long a, long b, long n, double bninv)
-{
-   double ab;
-   long q, res;
-
-   ab = ((double) a)*((double) b);
-   q = (long) (((double) a)*bninv);
-   res = (long) (ab - ((double) q)*((double) n));
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-inline long MulDivRem(long& qq, long a, long b, long n, double bninv)
-{
-   double ab;
-   long q, res;
-
-   ab = ((double) a)*((double) b);
-   q = (long) (((double) a)*bninv);
-   res = (long) (ab - ((double) q)*((double) n));
-   if (res >= n) {
-      res -= n;
-      q++;
-   } else if (res < 0) {
-      res += n;
-      q--;
-   }
-
-   qq = q;
-   return res;
-}
-
-#else
-
-inline long MulMod(long a, long b, long n)
-// return (a*b)%n
-
-{
-   double ab, xx;
-   long iab, q, res;
-
-   ab = ((double) a) * ((double) b);
-   q  = (long) (ab/((double) n));  // q could be off by (+/-) 1
-
-   xx = ab + 4503599627370496.0;
-   NTL_FetchLo(iab, xx);
-
-   res = iab - q*n;
-
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-/*
-The following MulMod takes a fourth argument, ninv,
-which is assumed to equal 1/((double) n).
-It is usually faster than the above.
-*/
-
-inline long MulMod(long a, long b, long n, double ninv)
-{
-   double ab, xx;
-   long iab, q, res;
-
-   ab = ((double) a) * ((double) b);
-   q  = (long) (ab*ninv);   // q could be off by (+/-) 1
-
-   xx = ab + 4503599627370496.0;
-   NTL_FetchLo(iab, xx);
-
-   res = iab - q*n;
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-/*
-Yet another MulMod.
-This time, the 4th argument should be ((double) b)/((double) n).
-*/
-
-inline long MulMod2(long a, long b, long n, double bninv)
-{
-   long q, res;
-
-   q = (long) (((double) a)*bninv);
-   res = a*b - q*n;
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-
-inline long MulDivRem(long& qq, long a, long b, long n, double bninv)
-{
-   long q, res;
-
-   q = (long) (((double) a)*bninv);
-   res = a*b - q*n;
-   if (res >= n) {
-      res -= n;
-      q++;
-   } else if (res < 0) {
-      res += n;
-      q--;
-   }
-
-   qq = q;
-   return res;
-}
-
-#endif
-
-
-
-
-#else
-
-inline long MulMod(long a, long b, long n)
-{
-   long q, res;
-
-   q  = (long) ((((double) a) * ((double) b)) / ((double) n)); 
-   res = a*b - q*n;
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-inline long MulMod(long a, long b, long n, double ninv)
-{
-   long q, res;
-
-   q  = (long) ((((double) a) * ((double) b)) * ninv); 
-   res = a*b - q*n;
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-
-inline long MulMod2(long a, long b, long n, double bninv)
-{
-   long q, res;
-
-   q  = (long) (((double) a) * bninv);
-   res = a*b - q*n;
-#if (NTL_ARITH_RIGHT_SHIFT && defined(NTL_AVOID_BRANCHING))
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-   res -= n;
-   res += (res >> (NTL_BITS_PER_LONG-1)) & n;
-#else
-   if (res >= n)
-      res -= n;
-   else if (res < 0)
-      res += n;
-#endif
-   return res;
-}
-
-inline long MulDivRem(long& qq, long a, long b, long n, double bninv)
-{
-   long q, res;
-
-   q  = (long) (((double) a) * bninv);
-   res = a*b - q*n;
-   if (res >= n) {
-      res -= n;
-      q++;
-   } else if (res < 0) {
-      res += n;
-      q--;
-   }
-
-   qq = q;
-   return res;
-}
-
-
-#endif
+// Some additional SP arithmetic routines, not defined in sp_arith.h
 
 
 long InvMod(long a, long n);
 // computes a^{-1} mod n.  Error is raised if undefined.
 
+long InvModStatus(long& x, long a, long n);
+// if gcd(a,n) = 1, then ReturnValue = 0, x = a^{-1} mod n
+// otherwise, ReturnValue = 1, x = gcd(a, n)
+
 long PowerMod(long a, long e, long n);
 // computes a^e mod n, e >= 0
 
+
+// Error handling
+
+#ifdef NTL_EXCEPTIONS
+
+class InvModErrorObject : public ArithmeticErrorObject {
+private:
+   SmartPtr<ZZ> a_ptr;
+   SmartPtr<ZZ> n_ptr;
+public:
+   InvModErrorObject(const char *s, const ZZ& a, const ZZ& n)
+      : ArithmeticErrorObject(s) , a_ptr(MakeSmart<ZZ>(a)),
+        n_ptr(MakeSmart<ZZ>(n)) { }
+
+   const ZZ& get_a() const { return *a_ptr; }
+   const ZZ& get_n() const { return *n_ptr; }
+};
+
+#else
+
+// We need this alt definition to keep pre-C++11 
+// compilers happy (NTL_EXCEPTIONS should only be used
+// with C++11 compilers).
+
+class InvModErrorObject : public ArithmeticErrorObject {
+public:
+   InvModErrorObject(const char *s, const ZZ& a, const ZZ& n)
+      : ArithmeticErrorObject(s) { }
+
+   const ZZ& get_a() const { return ZZ::zero(); }
+   const ZZ& get_n() const { return ZZ::zero(); }
+};
+
+#endif
+
+
+void InvModError(const char *s, const ZZ& a, const ZZ& n); 
 
 NTL_CLOSE_NNS
 

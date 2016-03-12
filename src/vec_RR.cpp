@@ -1,16 +1,9 @@
 
 #include <NTL/vec_RR.h>
 
-#include <NTL/new.h>
 
 NTL_START_IMPL
 
-
-NTL_vector_impl(RR,vec_RR)
-
-NTL_eq_vector_impl(RR,vec_RR)
-
-NTL_io_vector_impl(RR,vec_RR)
 
 void InnerProduct(RR& xx, const vec_RR& a, const vec_RR& b)
 {
@@ -40,7 +33,7 @@ void mul(vec_RR& x, const vec_RR& a, const RR& b_in)
 
 void mul(vec_RR& x, const vec_RR& a, double b_in)
 {
-   static RR b;
+   NTL_THREAD_LOCAL static RR b;
    conv(b, b_in);
    long n = a.length();
    x.SetLength(n);
@@ -52,7 +45,7 @@ void mul(vec_RR& x, const vec_RR& a, double b_in)
 void add(vec_RR& x, const vec_RR& a, const vec_RR& b)
 {
    long n = a.length();
-   if (b.length() != n) Error("vector add: dimension mismatch");
+   if (b.length() != n) LogicError("vector add: dimension mismatch");
 
    x.SetLength(n);
    long i;
@@ -63,7 +56,7 @@ void add(vec_RR& x, const vec_RR& a, const vec_RR& b)
 void sub(vec_RR& x, const vec_RR& a, const vec_RR& b)
 {
    long n = a.length();
-   if (b.length() != n) Error("vector sub: dimension mismatch");
+   if (b.length() != n) LogicError("vector sub: dimension mismatch");
    x.SetLength(n);
    long i;
    for (i = 0; i < n; i++)
@@ -131,8 +124,8 @@ RR operator*(const vec_RR& a, const vec_RR& b)
 
 void VectorCopy(vec_RR& x, const vec_RR& a, long n)
 {
-   if (n < 0) Error("VectorCopy: negative length");
-   if (n >= (1L << (NTL_BITS_PER_LONG-4))) Error("overflow in VectorCopy");
+   if (n < 0) LogicError("VectorCopy: negative length");
+   if (NTL_OVERFLOW(n, 1, 0)) ResourceError("overflow in VectorCopy");
 
    long m = min(n, a.length());
 

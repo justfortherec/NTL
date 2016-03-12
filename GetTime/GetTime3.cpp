@@ -1,16 +1,13 @@
 #include <NTL/config.h>
 
+
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <syscall.h>
 
 
-#if (defined(__cplusplus) && !defined(NTL_CXX_ONLY))
-extern "C" double _ntl_GetTime();
-#endif
 
-
-double _ntl_GetTime(void)
+double _ntl_GetTime()
 {
    struct rusage used;
 

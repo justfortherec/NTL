@@ -1,7 +1,12 @@
 
 #include <NTL/ZZ_pX.h>
-
+#include <NTL/BasicThreadPool.h>
 #include <NTL/new.h>
+
+
+
+
+
 
 NTL_START_IMPL
 
@@ -49,8 +54,13 @@ void ZZ_pXMatrix::operator=(const ZZ_pXMatrix& M)
 
 void RightShift(ZZ_pX& x, const ZZ_pX& a, long n)
 {
+   if (IsZero(a)) {
+      clear(x);
+      return;
+   }
+
    if (n < 0) {
-      if (n < -NTL_MAX_LONG) Error("overflow in RightShift");
+      if (n < -NTL_MAX_LONG) ResourceError("overflow in RightShift");
       LeftShift(x, a, -n);
       return;
    }
@@ -77,19 +87,21 @@ void RightShift(ZZ_pX& x, const ZZ_pX& a, long n)
 
 void LeftShift(ZZ_pX& x, const ZZ_pX& a, long n)
 {
-   if (n < 0) {
-      if (n < -NTL_MAX_LONG) Error("overflow in LeftShift");
-      RightShift(x, a, -n);
-      return;
-   }
-
-   if (n >= (1L << (NTL_BITS_PER_LONG-4)))
-      Error("overflow in LeftShift");
-
    if (IsZero(a)) {
       clear(x);
       return;
    }
+
+   if (n < 0) {
+      if (n < -NTL_MAX_LONG) 
+         clear(x);
+      else
+         RightShift(x, a, -n);
+      return;
+   }
+
+   if (NTL_OVERFLOW(n, 1, 0))
+      ResourceError("overflow in LeftShift");
 
    long m = a.rep.length();
 
@@ -168,7 +180,8 @@ void mul(ZZ_pX& U, ZZ_pX& V, const ZZ_pXMatrix& M)
    long n = (1L << k);
    long xx;
    ZZ_p a0, a1, b0, b1, c0, d0, u0, u1, v0, v1, nu0, nu1, nv0;
-   static ZZ t1, t2;
+   NTL_ZZRegister(t1);
+   NTL_ZZRegister(t2);
 
    if (n == d-1)
       xx = 1;
@@ -343,7 +356,7 @@ void IterHalfGCD(ZZ_pXMatrix& M_out, ZZ_pX& U, ZZ_pX& V, long d_red)
    if (deg(V) <= goal)
       return;
 
-   ZZVec tmp(deg(U)+1, ZZ_pInfo->ExtendedModulusSize);
+   ZZVec tmp(deg(U)+1, ZZ_p::ExtendedModulusSize());
    ZZ_pX Q, t(INIT_SIZE, d_red);
 
    while (deg(V) > goal) {
@@ -660,7 +673,8 @@ void IterBuild(ZZ_p* a, long n)
 
 void mul(ZZ_p* x, const ZZ_p* a, const ZZ_p* b, long n)
 {
-   static ZZ t, accum;
+   NTL_ZZRegister(t);
+   NTL_ZZRegister(accum);
 
    long i, j, jmin, jmax;
 
@@ -823,7 +837,7 @@ void eval(vec_ZZ_p& b, const ZZ_pX& f, const vec_ZZ_p& a)
 void interpolate(ZZ_pX& f, const vec_ZZ_p& a, const vec_ZZ_p& b)
 {
    long m = a.length();
-   if (b.length() != m) Error("interpolate: vector length mismatch");
+   if (b.length() != m) LogicError("interpolate: vector length mismatch");
 
    if (m == 0) {
       clear(f);
@@ -888,19 +902,13 @@ void interpolate(ZZ_pX& f, const vec_ZZ_p& a, const vec_ZZ_p& b)
    f.rep = res;
 }
 
-NTL_vector_impl(ZZ_pX,vec_ZZ_pX)
-
-NTL_eq_vector_impl(ZZ_pX,vec_ZZ_pX)
-
-NTL_io_vector_impl(ZZ_pX,vec_ZZ_pX)
-
-
 
    
-void InnerProduct(ZZ_pX& x, const vec_ZZ_p& v, long low, long high, 
+
+NTL_TBDECL(InnerProduct)(ZZ_pX& x, const vec_ZZ_p& v, long low, long high, 
                    const vec_ZZ_pX& H, long n, ZZVec& t)
 {
-   static ZZ s;
+   NTL_ZZRegister(s);
    long i, j;
 
    for (j = 0; j < n; j++)
@@ -925,6 +933,53 @@ void InnerProduct(ZZ_pX& x, const vec_ZZ_p& v, long low, long high,
 }
 
 
+#ifdef NTL_THREAD_BOOST
+
+void InnerProduct(ZZ_pX& x, const vec_ZZ_p& v, long low, long high, 
+                   const vec_ZZ_pX& H, long n, ZZVec& t)
+{
+   BasicThreadPool *pool = GetThreadPool();
+
+   if (!pool || pool->active() || pool->NumThreads() == 1) {
+      basic_InnerProduct(x, v, low, high, H, n, t);
+      return;
+   }
+
+   high = min(high, v.length()-1);
+   x.rep.SetLength(n);
+
+   ZZ_pContext local_context;
+   local_context.save();
+
+   pool->exec_range(n,
+   [low, high, &x, &t, &H, &v, &local_context](long first, long last) {
+
+      local_context.restore();
+
+      NTL_ZZRegister(s);
+   
+      for (long j = first; j < last; j++) clear(t[j]);
+
+      for (long i = low; i <= high; i++) {
+         const vec_ZZ_p& h = H[i-low].rep;
+         long m = min(h.length(), last);
+         const ZZ& w = rep(v[i]);
+   
+         for (long j = first; j < m; j++) {
+            mul(s, w, rep(h[j]));
+            add(t[j], t[j], s);
+         }
+      }
+
+      for (long j = first; j < last; j++) conv(x.rep[j], t[j]);
+   } );
+
+   x.normalize();
+}
+
+#endif
+
+
 void CompMod(ZZ_pX& x, const ZZ_pX& g, const ZZ_pXArgument& A, 
              const ZZ_pXModulus& F)
 {
@@ -935,7 +990,7 @@ void CompMod(ZZ_pX& x, const ZZ_pX& g, const ZZ_pXArgument& A,
 
 
    ZZ_pX s, t;
-   ZZVec scratch(F.n, ZZ_pInfo->ExtendedModulusSize);
+   ZZVec scratch(F.n, ZZ_p::ExtendedModulusSize());
 
    long m = A.H.length() - 1;
    long l = ((g.rep.length()+m-1)/m) - 1;
@@ -956,7 +1011,7 @@ void CompMod(ZZ_pX& x, const ZZ_pX& g, const ZZ_pXArgument& A,
 
 void build(ZZ_pXArgument& A, const ZZ_pX& h, const ZZ_pXModulus& F, long m)
 {
-   if (m <= 0 || deg(h) >= F.n) Error("build: bad args");
+   if (m <= 0 || deg(h) >= F.n) LogicError("build: bad args");
 
    if (m > F.n) m = F.n;
 
@@ -986,7 +1041,7 @@ void build(ZZ_pXArgument& A, const ZZ_pX& h, const ZZ_pXModulus& F, long m)
 
 
 
-long ZZ_pXArgBound = 0;
+NTL_CHEAP_THREAD_LOCAL long ZZ_pXArgBound = 0;
 
 
 void CompMod(ZZ_pX& x, const ZZ_pX& g, const ZZ_pX& h, const ZZ_pXModulus& F)
@@ -1116,7 +1171,7 @@ void UpdateMap(vec_ZZ_p& x, const vec_ZZ_p& aa,
    a = aa;
    StripZeroes(a);
 
-   if (a.length() > n) Error("UpdateMap: bad args");
+   if (a.length() > n) LogicError("UpdateMap: bad args");
 
    if (!B.UseFFT) {
       PlainUpdateMap(x, a, B.b, F.f);
@@ -1143,14 +1198,17 @@ void UpdateMap(vec_ZZ_p& x, const vec_ZZ_p& aa,
 
    
 
-void ProjectPowers(vec_ZZ_p& x, const vec_ZZ_p& a, long k,
+NTL_TBDECL(ProjectPowers)(vec_ZZ_p& x, const vec_ZZ_p& a, long k,
                    const ZZ_pXArgument& H, const ZZ_pXModulus& F)
 
 {
    long n = F.n;
 
-   if (a.length() > n || k < 0 || k >= (1L << (NTL_BITS_PER_LONG-4))) 
-      Error("ProjectPowers: bad args");
+   if (a.length() > n || k < 0) 
+      LogicError("ProjectPowers: bad args");
+   if (NTL_OVERFLOW(k, 1, 0)) 
+      ResourceError("ProjectPowers: excessive args");
+
 
    long m = H.H.length()-1;
    long l = (k+m-1)/m - 1;
@@ -1175,12 +1233,69 @@ void ProjectPowers(vec_ZZ_p& x, const vec_ZZ_p& a, long k,
 }
 
 
+#ifdef NTL_THREAD_BOOST
+
+void ProjectPowers(vec_ZZ_p& x, const vec_ZZ_p& a, long k,
+                   const ZZ_pXArgument& H, const ZZ_pXModulus& F)
+
+{
+   BasicThreadPool *pool = GetThreadPool();
+
+   if (!pool || pool->active() || pool->NumThreads() == 1) {
+      basic_ProjectPowers(x, a, k, H, F);
+      return;
+   }
+
+   long n = F.n;
+
+   if (a.length() > n || k < 0) 
+      LogicError("ProjectPowers: bad args");
+   if (NTL_OVERFLOW(k, 1, 0)) 
+      ResourceError("ProjectPowers: excessive args");
+
+
+   long m = H.H.length()-1;
+   long l = (k+m-1)/m - 1;
+
+   ZZ_pXMultiplier M;
+   build(M, H.H[m], F);
+
+   vec_ZZ_p s(INIT_SIZE, n);
+   s = a;
+   StripZeroes(s);
+
+   x.SetLength(k);
+
+   ZZ_pContext local_context;
+   local_context.save();
+
+
+   for (long i = 0; i <= l; i++) {
+      long m1 = min(m, k-i*m);
+      ZZ_p* w = &x[i*m];
+
+      pool->exec_range(m1,
+      [w, &H, &s, &local_context](long first, long last) {
+         local_context.restore();
+         for (long j = first; j < last; j++)
+            InnerProduct(w[j], H.H[j].rep, s);
+      } );
+
+
+      if (i < l)
+         UpdateMap(s, s, M, F);
+   }
+}
+
+
+#endif
+
 
 void ProjectPowers(vec_ZZ_p& x, const vec_ZZ_p& a, long k,
                    const ZZ_pX& h, const ZZ_pXModulus& F)
 
 {
-   if (a.length() > F.n || k < 0) Error("ProjectPowers: bad args");
+   if (a.length() > F.n || k < 0) LogicError("ProjectPowers: bad args");
 
    if (k == 0) {
       x.SetLength(0);
@@ -1288,8 +1403,9 @@ void GCDMinPolySeq(ZZ_pX& h, const vec_ZZ_p& x, long m)
 
 void MinPolySeq(ZZ_pX& h, const vec_ZZ_p& a, long m)
 {
-   if (m < 0 || m >= (1L << (NTL_BITS_PER_LONG-4))) Error("MinPoly: bad args");
-   if (a.length() < 2*m) Error("MinPoly: sequence too short");
+   if (m < 0) LogicError("MinPoly: bad args");
+   if (NTL_OVERFLOW(m, 1, 0)) LogicError("MinPoly: bad args");
+   if (a.length() < 2*m) LogicError("MinPoly: sequence too short");
 
    if (m > NTL_ZZ_pX_BERMASS_CROSSOVER)
       GCDMinPolySeq(h, a, m);
@@ -1311,7 +1427,7 @@ void DoMinPolyMod(ZZ_pX& h, const ZZ_pX& g, const ZZ_pXModulus& F, long m,
 void ProbMinPolyMod(ZZ_pX& h, const ZZ_pX& g, const ZZ_pXModulus& F, long m) 
 {
    long n = F.n;
-   if (m < 1 || m > n) Error("ProbMinPoly: bad args");
+   if (m < 1 || m > n) LogicError("ProbMinPoly: bad args");
    
    long i;
    vec_ZZ_p R(INIT_SIZE, n);
@@ -1324,7 +1440,7 @@ void MinPolyMod(ZZ_pX& hh, const ZZ_pX& g, const ZZ_pXModulus& F, long m)
 {
    ZZ_pX h, h1;
    long n = F.n;
-   if (m < 1 || m > n) Error("MinPoly: bad args");
+   if (m < 1 || m > n) LogicError("MinPoly: bad args");
 
    /* probabilistically compute min-poly */
 
@@ -1361,7 +1477,7 @@ void MinPolyMod(ZZ_pX& hh, const ZZ_pX& g, const ZZ_pXModulus& F, long m)
 void IrredPolyMod(ZZ_pX& h, const ZZ_pX& g, const ZZ_pXModulus& F, long m) 
 {
    vec_ZZ_p R(INIT_SIZE, 1);
-   if (m < 1 || m > F.n) Error("IrredPoly: bad args");
+   if (m < 1 || m > F.n) LogicError("IrredPoly: bad args");
 
    set(R[0]);
    DoMinPolyMod(h, g, F, m, R);
@@ -1439,7 +1555,7 @@ void FFTMulTrunc(ZZ_pX& x, const ZZ_pX& a, const ZZ_pX& b, long n)
 
 void MulTrunc(ZZ_pX& x, const ZZ_pX& a, const ZZ_pX& b, long n)
 {
-   if (n < 0) Error("MulTrunc: bad args");
+   if (n < 0) LogicError("MulTrunc: bad args");
 
    if (deg(a) <= NTL_ZZ_pX_FFT_CROSSOVER || deg(b) <= NTL_ZZ_pX_FFT_CROSSOVER)
       PlainMulTrunc(x, a, b, n);
@@ -1477,7 +1593,7 @@ void FFTSqrTrunc(ZZ_pX& x, const ZZ_pX& a, long n)
 
 void SqrTrunc(ZZ_pX& x, const ZZ_pX& a, long n)
 {
-   if (n < 0) Error("SqrTrunc: bad args");
+   if (n < 0) LogicError("SqrTrunc: bad args");
 
    if (deg(a) <= NTL_ZZ_pX_FFT_CROSSOVER)
       PlainSqrTrunc(x, a, n);
@@ -1491,7 +1607,7 @@ void FastTraceVec(vec_ZZ_p& S, const ZZ_pX& f)
    long n = deg(f);
 
    if (n <= 0) 
-      Error("FastTraceVec: bad args");
+      LogicError("FastTraceVec: bad args");
 
    if (n == 0) {
       S.SetLength(0);
@@ -1533,7 +1649,7 @@ void FastTraceVec(vec_ZZ_p& S, const ZZ_pX& f)
 void PlainTraceVec(vec_ZZ_p& S, const ZZ_pX& ff)
 {
    if (deg(ff) <= 0)
-      Error("TraceVec: bad args");
+      LogicError("TraceVec: bad args");
 
    ZZ_pX f;
    f = ff;
@@ -1574,13 +1690,9 @@ void TraceVec(vec_ZZ_p& S, const ZZ_pX& f)
       FastTraceVec(S, f);
 }
 
-void ComputeTraceVec(const ZZ_pXModulus& F)
+static
+void ComputeTraceVec(vec_ZZ_p& S, const ZZ_pXModulus& F)
 {
-   vec_ZZ_p& S = *((vec_ZZ_p *) &F.tracevec);
-
-   if (S.length() > 0)
-      return;
-
    if (!F.UseFFT) {
       PlainTraceVec(S, F.f);
       return;
@@ -1613,18 +1725,24 @@ void TraceMod(ZZ_p& x, const ZZ_pX& a, const ZZ_pXModulus& F)
    long n = F.n;
 
    if (deg(a) >= n)
-      Error("trace: bad args");
+      LogicError("trace: bad args");
 
-   if (F.tracevec.length() == 0) 
-      ComputeTraceVec(F);
-
-   InnerProduct(x, a.rep, F.tracevec);
+   do { // NOTE: thread safe lazy init
+      Lazy<vec_ZZ_p>::Builder builder(F.tracevec.val());
+      if (!builder()) break;
+      UniquePtr<vec_ZZ_p> p;
+      p.make();
+      ComputeTraceVec(*p, F);
+      builder.move(p);
+   } while (0);
+      
+   InnerProduct(x, a.rep, *F.tracevec.val());
 }
 
 void TraceMod(ZZ_p& x, const ZZ_pX& a, const ZZ_pX& f)
 {
    if (deg(a) >= deg(f) || deg(f) <= 0)
-      Error("trace: bad args");
+      LogicError("trace: bad args");
 
    project(x, TraceVec(f), a);
 }
@@ -1644,7 +1762,7 @@ void PlainResultant(ZZ_p& rres, const ZZ_pX& a, const ZZ_pX& b)
 
       long n = max(deg(a),deg(b)) + 1;
       ZZ_pX u(INIT_SIZE, n), v(INIT_SIZE, n);
-      ZZVec tmp(n, ZZ_pInfo->ExtendedModulusSize);
+      ZZVec tmp(n, ZZ_p::ExtendedModulusSize());
 
       u = a;
       v = b;
@@ -1674,9 +1792,9 @@ void PlainResultant(ZZ_p& rres, const ZZ_pX& a, const ZZ_pX& b)
             break;
          }
       }
-
-      rres = res;
    }
+
+   rres = res;
 }
 
 
@@ -1696,7 +1814,7 @@ void ResIterHalfGCD(ZZ_pXMatrix& M_out, ZZ_pX& U, ZZ_pX& V, long d_red,
    if (deg(V) <= goal)
       return;
 
-   ZZVec tmp(deg(U)+1, ZZ_pInfo->ExtendedModulusSize);
+   ZZVec tmp(deg(U)+1, ZZ_p::ExtendedModulusSize());
    ZZ_pX Q, t(INIT_SIZE, d_red);
 
 
@@ -1939,7 +2057,7 @@ void resultant(ZZ_p& rres, const ZZ_pX& u, const ZZ_pX& v)
 void NormMod(ZZ_p& x, const ZZ_pX& a, const ZZ_pX& f)
 {
    if (deg(f) <= 0 || deg(a) >= deg(f)) 
-      Error("norm: bad args");
+      LogicError("norm: bad args");
 
    if (IsZero(a)) {
       clear(x);

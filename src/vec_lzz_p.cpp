@@ -1,16 +1,10 @@
 
 #include <NTL/vec_lzz_p.h>
 
-#include <NTL/new.h>
-
 NTL_START_IMPL
 
-NTL_vector_impl(zz_p,vec_zz_p)
 
-NTL_io_vector_impl(zz_p,vec_zz_p)
-
-NTL_eq_vector_impl(zz_p,vec_zz_p)
-
+// NOTE: the signature for this is in lzz_p.h
 void conv(vec_zz_p& x, const vec_ZZ& a)
 {
    long i, n;
@@ -21,17 +15,28 @@ void conv(vec_zz_p& x, const vec_ZZ& a)
    zz_p* xp = x.elts();
    const ZZ* ap = a.elts();
 
-   for (i = 0; i < n; i++)
-      conv(xp[i], ap[i]);
-}
+   long p = zz_p::modulus();
 
-void conv(vec_ZZ& x, const vec_zz_p& a)
-{
-   long n = a.length();
-   x.SetLength(n);
-   long i;
    for (i = 0; i < n; i++)
-      x[i] = rep(a[i]);
+      xp[i].LoopHole() = rem(ap[i], p);
+}
+//
+// NOTE: the signature for this is in lzz_p.h
+void conv(vec_zz_p& x, const Vec<long>& a)
+{
+   long i, n;
+
+   n = a.length();
+   x.SetLength(n);
+
+   zz_p* xp = x.elts();
+   const long* ap = a.elts();
+
+   long p = zz_p::modulus();
+   sp_reduce_struct red_struct = zz_p::red_struct();
+
+   for (i = 0; i < n; i++)
+      xp[i].LoopHole() = rem(ap[i], p, red_struct);
 }
 
 
@@ -41,37 +46,53 @@ void InnerProduct(zz_p& x, const vec_zz_p& a, const vec_zz_p& b)
 {
    long n = min(a.length(), b.length());
    long i;
-   zz_p accum, t;
 
-   clear(accum);
+   long accum, t;
+   long p = zz_p::modulus();
+   mulmod_t pinv = zz_p::ModulusInverse();
+
+   const zz_p *ap = a.elts();
+   const zz_p *bp = b.elts();
+
+   accum = 0;
    for (i = 0; i < n; i++) {
-      mul(t, a[i], b[i]);
-      add(accum, accum, t);
+      t = MulMod(rep(ap[i]), rep(bp[i]), p, pinv);
+      accum = AddMod(accum, t, p);
    }
 
-   x = accum;
+   x.LoopHole() = accum;
 }
 
 void InnerProduct(zz_p& x, const vec_zz_p& a, const vec_zz_p& b,
                   long offset)
 {
+   if (offset < 0) LogicError("InnerProduct: negative offset");
+   if (NTL_OVERFLOW(offset, 1, 0)) ResourceError("InnerProduct: offset too big");
+
    long n = min(a.length(), b.length()+offset);
    long i;
-   zz_p accum, t;
 
-   clear(accum);
+   long accum, t;
+   long p = zz_p::modulus();
+   mulmod_t pinv = zz_p::ModulusInverse();
+
+
+   const zz_p *ap = a.elts();
+   const zz_p *bp = b.elts();
+
+   accum = 0;
    for (i = offset; i < n; i++) {
-      mul(t, a[i], b[i-offset]);
-      add(accum, accum, t);
+      t = MulMod(rep(ap[i]), rep(bp[i-offset]), p, pinv);
+      accum = AddMod(accum, t, p);
    }
 
-   x = accum;
+   x.LoopHole() = accum;
 }
 
 long CRT(vec_ZZ& gg, ZZ& a, const vec_zz_p& G)
 {
    long n = gg.length();
-   if (G.length() != n) Error("CRT: vector length mismatch");
+   if (G.length() != n) LogicError("CRT: vector length mismatch");
 
    long p = zz_p::modulus();
 
@@ -93,7 +114,6 @@ long CRT(vec_ZZ& gg, ZZ& a, const vec_zz_p& G)
    long modified = 0;
 
    long h;
-   ZZ ah;
 
    ZZ g;
    long i;
@@ -114,12 +134,11 @@ long CRT(vec_ZZ& gg, ZZ& a, const vec_zz_p& G)
    
       if (h != 0) {
          modified = 1;
-         mul(ah, a, h);
    
          if (!p_odd && g > 0 && (h == p1))
-            sub(g, g, ah);
+            MulSubFrom(g, a, h);
          else
-            add(g, g, ah);
+            MulAddTo(g, a, h);
       }
 
       gg[i] = g;
@@ -131,72 +150,123 @@ long CRT(vec_ZZ& gg, ZZ& a, const vec_zz_p& G)
 }
 
 
+
 void mul(vec_zz_p& x, const vec_zz_p& a, zz_p b)
 {
    long n = a.length();
    x.SetLength(n);
+
    long i;
-   for (i = 0; i < n; i++)
-      mul(x[i], a[i], b);
+
+   if (n <= 1) {
+
+      for (i = 0; i < n; i++)
+         mul(x[i], a[i], b);
+
+   }
+   else {
+ 
+      long p = zz_p::modulus();
+      mulmod_t pinv = zz_p::ModulusInverse();
+      long bb = rep(b);
+      mulmod_precon_t bpinv = PrepMulModPrecon(bb, p, pinv);
+      
+      
+      const zz_p *ap = a.elts();
+      zz_p *xp = x.elts();
+
+      for (i = 0; i < n; i++)
+         xp[i].LoopHole() = MulModPrecon(rep(ap[i]), bb, p, bpinv);
+
+   }
 }
 
 void mul(vec_zz_p& x, const vec_zz_p& a, long b_in)
 {
-   NTL_zz_pRegister(b);
+   zz_p b;
    b = b_in;
-   long n = a.length();
-   x.SetLength(n);
-   long i;
-   for (i = 0; i < n; i++)
-      mul(x[i], a[i], b);
+   mul(x, a, b);
 }
+
+
 
 void add(vec_zz_p& x, const vec_zz_p& a, const vec_zz_p& b)
 {
    long n = a.length();
-   if (b.length() != n) Error("vector add: dimension mismatch");
+   if (b.length() != n) LogicError("vector add: dimension mismatch");
+
+   long p = zz_p::modulus();
 
    x.SetLength(n);
+
+   const zz_p *ap = a.elts();
+   const zz_p *bp = b.elts();
+   zz_p *xp = x.elts();
+
    long i;
    for (i = 0; i < n; i++)
-      add(x[i], a[i], b[i]);
+      xp[i].LoopHole() = AddMod(rep(ap[i]), rep(bp[i]), p);
 }
 
 void sub(vec_zz_p& x, const vec_zz_p& a, const vec_zz_p& b)
 {
    long n = a.length();
-   if (b.length() != n) Error("vector sub: dimension mismatch");
+   if (b.length() != n) LogicError("vector sub: dimension mismatch");
+
+   long p = zz_p::modulus();
+
    x.SetLength(n);
+
+
+   const zz_p *ap = a.elts();
+   const zz_p *bp = b.elts();
+   zz_p *xp = x.elts();
+
    long i;
    for (i = 0; i < n; i++)
-      sub(x[i], a[i], b[i]);
+      xp[i].LoopHole() = SubMod(rep(ap[i]), rep(bp[i]), p);
 }
 
 void clear(vec_zz_p& x)
 {
    long n = x.length();
+
+
+   zz_p *xp = x.elts();
+
    long i;
    for (i = 0; i < n; i++)
-      clear(x[i]);
+      clear(xp[i]);
 }
 
 void negate(vec_zz_p& x, const vec_zz_p& a)
 {
    long n = a.length();
+   long p = zz_p::modulus();
+
    x.SetLength(n);
+
+
+   const zz_p *ap = a.elts();
+   zz_p *xp = x.elts();
+
+
    long i;
    for (i = 0; i < n; i++)
-      negate(x[i], a[i]);
+      xp[i].LoopHole() = NegateMod(rep(ap[i]), p);
 }
 
 
 long IsZero(const vec_zz_p& a)
 {
    long n = a.length();
-   long i;
 
+
+   const zz_p *ap = a.elts();
+
+   long i;
    for (i = 0; i < n; i++)
-      if (!IsZero(a[i]))
+      if (!IsZero(ap[i]))
          return 0;
 
    return 1;
@@ -235,20 +305,25 @@ zz_p operator*(const vec_zz_p& a, const vec_zz_p& b)
 
 void VectorCopy(vec_zz_p& x, const vec_zz_p& a, long n)
 {
-   if (n < 0) Error("VectorCopy: negative length");
-   if (n >= (1L << (NTL_BITS_PER_LONG-4))) Error("overflow in VectorCopy");
+   if (n < 0) LogicError("VectorCopy: negative length");
+   if (NTL_OVERFLOW(n, 1, 0)) ResourceError("overflow in VectorCopy");
 
    long m = min(n, a.length());
 
    x.SetLength(n);
+
+
+   const zz_p *ap = a.elts();
+   zz_p *xp = x.elts();
+
   
    long i;
 
    for (i = 0; i < m; i++)
-      x[i] = a[i];
+      xp[i] = ap[i];
 
    for (i = m; i < n; i++)
-      clear(x[i]);
+      clear(xp[i]);
 }
 
 NTL_END_IMPL

@@ -3,14 +3,7 @@
 #include <NTL/vec_ZZVec.h>
 #include <NTL/vec_long.h>
 
-#include <NTL/new.h>
-
 NTL_START_IMPL
-
-NTL_matrix_impl(ZZ_p,vec_ZZ_p,vec_vec_ZZ_p,mat_ZZ_p)
-NTL_io_matrix_impl(ZZ_p,vec_ZZ_p,vec_vec_ZZ_p,mat_ZZ_p)
-NTL_eq_matrix_impl(ZZ_p,vec_ZZ_p,vec_vec_ZZ_p,mat_ZZ_p)
-
 
   
 void add(mat_ZZ_p& X, const mat_ZZ_p& A, const mat_ZZ_p& B)  
@@ -19,7 +12,7 @@ void add(mat_ZZ_p& X, const mat_ZZ_p& A, const mat_ZZ_p& B)
    long m = A.NumCols();  
   
    if (B.NumRows() != n || B.NumCols() != m)   
-      Error("matrix add: dimension mismatch");  
+      LogicError("matrix add: dimension mismatch");  
   
    X.SetDims(n, m);  
   
@@ -35,7 +28,7 @@ void sub(mat_ZZ_p& X, const mat_ZZ_p& A, const mat_ZZ_p& B)
    long m = A.NumCols();  
   
    if (B.NumRows() != n || B.NumCols() != m)  
-      Error("matrix sub: dimension mismatch");  
+      LogicError("matrix sub: dimension mismatch");  
   
    X.SetDims(n, m);  
   
@@ -66,7 +59,7 @@ void mul_aux(mat_ZZ_p& X, const mat_ZZ_p& A, const mat_ZZ_p& B)
    long m = B.NumCols();  
   
    if (l != B.NumRows())  
-      Error("matrix mul: dimension mismatch");  
+      LogicError("matrix mul: dimension mismatch");  
   
    X.SetDims(n, m);  
   
@@ -105,7 +98,7 @@ void mul_aux(vec_ZZ_p& x, const mat_ZZ_p& A, const vec_ZZ_p& b)
    long l = A.NumCols();  
   
    if (l != b.length())  
-      Error("matrix mul: dimension mismatch");  
+      LogicError("matrix mul: dimension mismatch");  
   
    x.SetLength(n);  
   
@@ -125,7 +118,7 @@ void mul_aux(vec_ZZ_p& x, const mat_ZZ_p& A, const vec_ZZ_p& b)
   
 void mul(vec_ZZ_p& x, const mat_ZZ_p& A, const vec_ZZ_p& b)  
 {  
-   if (&b == &x || A.position(b) != -1) {
+   if (&b == &x || A.position1(x) != -1) {
       vec_ZZ_p tmp;
       mul_aux(tmp, A, b);
       x = tmp;
@@ -141,7 +134,7 @@ void mul_aux(vec_ZZ_p& x, const vec_ZZ_p& a, const mat_ZZ_p& B)
    long l = B.NumCols();  
   
    if (n != a.length())  
-      Error("matrix mul: dimension mismatch");  
+      LogicError("matrix mul: dimension mismatch");  
   
    x.SetLength(l);  
   
@@ -160,7 +153,7 @@ void mul_aux(vec_ZZ_p& x, const vec_ZZ_p& a, const mat_ZZ_p& B)
 
 void mul(vec_ZZ_p& x, const vec_ZZ_p& a, const mat_ZZ_p& B)
 {
-   if (&a == &x || B.position(a) != -1) {
+   if (&a == &x) {
       vec_ZZ_p tmp;
       mul_aux(tmp, a, B);
       x = tmp;
@@ -198,7 +191,7 @@ void determinant(ZZ_p& d, const mat_ZZ_p& M_in)
    n = M_in.NumRows();
 
    if (M_in.NumCols() != n)
-      Error("determinant: nonsquare matrix");
+      LogicError("determinant: nonsquare matrix");
 
    if (n == 0) {
       set(d);
@@ -327,10 +320,10 @@ void solve(ZZ_p& d, vec_ZZ_p& X,
 {
    long n = A.NumRows();
    if (A.NumCols() != n)
-      Error("solve: nonsquare matrix");
+      LogicError("solve: nonsquare matrix");
 
    if (b.length() != n)
-      Error("solve: dimension mismatch");
+      LogicError("solve: dimension mismatch");
 
    if (n == 0) {
       set(d);
@@ -427,7 +420,7 @@ void inv(ZZ_p& d, mat_ZZ_p& X, const mat_ZZ_p& A)
 {
    long n = A.NumRows();
    if (A.NumCols() != n)
-      Error("inv: nonsquare matrix");
+      LogicError("inv: nonsquare matrix");
 
    if (n == 0) {
       set(d);
@@ -538,7 +531,7 @@ long gauss(mat_ZZ_p& M_in, long w)
    long m = M_in.NumCols();
 
    if (w < 0 || w > m)
-      Error("gauss: bad args");
+      LogicError("gauss: bad args");
 
    const ZZ& p = ZZ_p::modulus();
 
@@ -817,12 +810,12 @@ void inv(mat_ZZ_p& X, const mat_ZZ_p& A)
 {
    ZZ_p d;
    inv(d, X, A);
-   if (d == 0) Error("inv: non-invertible matrix");
+   if (d == 0) ArithmeticError("inv: non-invertible matrix");
 }
 
 void power(mat_ZZ_p& X, const mat_ZZ_p& A, const ZZ& e)
 {
-   if (A.NumRows() != A.NumCols()) Error("power: non-square matrix");
+   if (A.NumRows() != A.NumCols()) LogicError("power: non-square matrix");
 
    if (e == 0) {
       ident(X, A.NumRows());

@@ -1,5 +1,4 @@
 
-
 #include <NTL/lzz_pXFactoring.h>
 #include <NTL/vec_vec_lzz_p.h>
 #include <NTL/FacVec.h>
@@ -15,7 +14,7 @@ void SquareFreeDecomp(vec_pair_zz_pX_long& u, const zz_pX& ff)
    zz_pX f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      Error("SquareFreeDecomp: bad args");
+      LogicError("SquareFreeDecomp: bad args");
 
    zz_pX r, t, v, tmp1;
    long m, j, finished, done;
@@ -81,9 +80,9 @@ void NullSpace(long& r, vec_long& D, vec_vec_zz_p& M, long verbose)
    for (j = 0; j < n; j++) D[j] = -1;
 
    long p = zz_p::modulus();
-   double pinv = zz_p::ModulusInverse();
+   mulmod_t pinv = zz_p::ModulusInverse();
    long T1, T2;
-   double T1pinv;
+   mulmod_precon_t T1pinv;
 
    r = 0;
 
@@ -117,7 +116,7 @@ void NullSpace(long& r, vec_long& D, vec_vec_zz_p& M, long verbose)
             t1 = M[i][k];
 
             T1 = rep(t1);
-            T1pinv = ((double) T1)*pinv;
+            T1pinv = PrepMulModPrecon(T1, p, pinv); 
 
             x = M[i].elts() + (k+1);
             y = M[l].elts() + (k+1);
@@ -125,7 +124,7 @@ void NullSpace(long& r, vec_long& D, vec_vec_zz_p& M, long verbose)
             for (j = k+1; j < n; j++, x++, y++) {
                // *x = *x + (*y)*t1
 
-               T2 = MulMod2(rep(*y), T1, p, T1pinv);
+               T2 = MulModPrecon(rep(*y), T1, p, T1pinv);
                T2 = AddMod(T2, rep(*x), p);
                (*x).LoopHole() = T2;
             }
@@ -257,6 +256,8 @@ void RandomBasisElt(zz_pX& g, const vec_long& D,
          v[j] = t1;
       }
    }
+
+   g.normalize();
 }
 
 
@@ -354,7 +355,7 @@ void SFBerlekamp(vec_zz_pX& factors, const zz_pX& ff, long verbose)
    zz_pX f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      Error("SFBerlekamp: bad args");
+      LogicError("SFBerlekamp: bad args");
 
    if (deg(f) == 0) {
       factors.SetLength(0);
@@ -465,7 +466,7 @@ void berlekamp(vec_pair_zz_pX_long& factors, const zz_pX& f, long verbose)
    vec_zz_pX x;
 
    if (!IsOne(LeadCoeff(f)))
-      Error("berlekamp: bad args");
+      LogicError("berlekamp: bad args");
 
    if (verbose) { cerr << "square-free decomposition..."; t = GetTime(); }
    SquareFreeDecomp(sfd, f);
@@ -557,7 +558,7 @@ void TraceMap(zz_pX& w, const zz_pX& a, long d, const zz_pXModulus& F,
               const zz_pX& b)
 
 {
-   if (d < 0) Error("TraceMap: bad args");
+   if (d < 0) LogicError("TraceMap: bad args");
 
    zz_pX y, z, t;
 
@@ -596,7 +597,7 @@ void TraceMap(zz_pX& w, const zz_pX& a, long d, const zz_pXModulus& F,
 
 void PowerCompose(zz_pX& y, const zz_pX& h, long q, const zz_pXModulus& F)
 {
-   if (q < 0) Error("PowerCompose: bad args");
+   if (q < 0) LogicError("PowerCompose: bad args");
 
    zz_pX z(INIT_SIZE, F.n);
    long sw;
@@ -672,7 +673,7 @@ long ProbIrredTest(const zz_pX& f, long iter)
    return !IsX(s);
 }
 
-long zz_pX_BlockingFactor = 10;
+NTL_CHEAP_THREAD_LOCAL long zz_pX_BlockingFactor = 10;
 
 void DDF(vec_pair_zz_pX_long& factors, const zz_pX& ff, const zz_pX& hh, 
          long verbose)
@@ -681,7 +682,7 @@ void DDF(vec_pair_zz_pX_long& factors, const zz_pX& ff, const zz_pX& hh,
    zz_pX h = hh;
 
    if (!IsOne(LeadCoeff(f)))
-      Error("DDF: bad args");
+      LogicError("DDF: bad args");
 
    factors.SetLength(0);
 
@@ -792,7 +793,6 @@ void RecEDF(vec_zz_pX& factors, const zz_pX& f, const zz_pX& b, long d,
 {
    vec_zz_pX v;
    long i;
-   zz_pX bb;
 
    if (verbose) cerr << "+";
 
@@ -818,7 +818,7 @@ void EDF(vec_zz_pX& factors, const zz_pX& ff, const zz_pX& bb,
    zz_pX b = bb;
 
    if (!IsOne(LeadCoeff(f)))
-      Error("EDF: bad args");
+      LogicError("EDF: bad args");
 
    long n = deg(f);
    long r = n/d;
@@ -857,7 +857,7 @@ void EDF(vec_zz_pX& factors, const zz_pX& ff, const zz_pX& bb,
 void SFCanZass1(vec_pair_zz_pX_long& u, zz_pX& h, const zz_pX& f, long verbose)
 {
    if (!IsOne(LeadCoeff(f)) || deg(f) == 0)
-      Error("SFCanZass1: bad args");
+      LogicError("SFCanZass1: bad args");
 
    double t;
 
@@ -923,7 +923,7 @@ void SFCanZass(vec_zz_pX& factors, const zz_pX& ff, long verbose)
    zz_pX f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      Error("SFCanZass: bad args");
+      LogicError("SFCanZass: bad args");
 
    if (deg(f) == 0) {
       factors.SetLength(0);
@@ -995,7 +995,7 @@ void SFCanZass(vec_zz_pX& factors, const zz_pX& ff, long verbose)
 void CanZass(vec_pair_zz_pX_long& factors, const zz_pX& f, long verbose)
 {
    if (!IsOne(LeadCoeff(f)))
-      Error("CanZass: bad args");
+      LogicError("CanZass: bad args");
 
    double t;
    vec_pair_zz_pX_long sfd;
@@ -1209,10 +1209,10 @@ void FindRoot(zz_p& root, const zz_pX& ff)
    f = ff;
 
    if (!IsOne(LeadCoeff(f)))
-      Error("FindRoot: bad args");
+      LogicError("FindRoot: bad args");
 
    if (deg(f) == 0)
-      Error("FindRoot: bad args");
+      LogicError("FindRoot: bad args");
 
    p1 = zz_p::modulus() >> 1;
    h1 = 1;
@@ -1494,9 +1494,9 @@ void RecBuildIrred(zz_pX& f, long u, const FacVec& fvec)
 void BuildIrred(zz_pX& f, long n)
 {
    if (n <= 0)
-      Error("BuildIrred: n must be positive");
+      LogicError("BuildIrred: n must be positive");
 
-   if (n >= (1L << (NTL_BITS_PER_LONG-4))) Error("overflow in BuildIrred");
+   if (NTL_OVERFLOW(n, 1, 0)) ResourceError("overflow in BuildIrred");
 
    if (n == 1) {
       SetX(f);
@@ -1529,12 +1529,12 @@ void BuildRandomIrred(zz_pX& f, const zz_pX& g)
 
 /************* NEW DDF ****************/
 
-long zz_pX_GCDTableSize = 4;
-
-static vec_zz_pX *BabyStepFile = 0;
-static vec_zz_pX *GiantStepFile = 0;
-static zz_pXArgument *HHH = 0;
-static long OldN = 0;
+NTL_CHEAP_THREAD_LOCAL long zz_pX_GCDTableSize = 4;
+static NTL_CHEAP_THREAD_LOCAL vec_zz_pX *BabyStepFile = 0;
+static NTL_CHEAP_THREAD_LOCAL vec_zz_pX *GiantStepFile = 0;
+static NTL_CHEAP_THREAD_LOCAL zz_pXArgument *HHH = 0;
+static NTL_CHEAP_THREAD_LOCAL zz_pXAltArgument *HHH1 = 0;
+static NTL_CHEAP_THREAD_LOCAL long OldN = 0;
 
 
 static
@@ -1549,7 +1549,6 @@ void GenerateBabySteps(zz_pX& h1, const zz_pX& f, const zz_pX& h, long k,
    build(F, f);
 
 
-   BabyStepFile = NTL_NEW_OP vec_zz_pX;
    (*BabyStepFile).SetLength(k-1);
 
    h1 = h;
@@ -1569,13 +1568,16 @@ void GenerateBabySteps(zz_pX& h1, const zz_pX& f, const zz_pX& h, long k,
    else {
       zz_pXArgument H;
       build(H, h, F, 2*rootn);
+
+      zz_pXAltArgument H1;
+      build(H1, H, F);
    
    
       for (i = 1; i <= k-1; i++) {
          (*BabyStepFile)(i) = h1; 
    
-         CompMod(h1, h1, H, F);
-         if (verbose) cerr << "+";
+         CompMod(h1, h1, H1, F);
+         if (verbose) cerr << ".";
       }
    }
    
@@ -1592,23 +1594,13 @@ void GenerateGiantSteps(const zz_pX& f, const zz_pX& h, long l, long verbose)
 
    build(F, f);
 
-   HHH = NTL_NEW_OP zz_pXArgument;
    build(*HHH, h, F, 2*SqrRoot(F.n));
+   build(*HHH1, *HHH, F);
 
    OldN = F.n;
 
-   GiantStepFile = NTL_NEW_OP vec_zz_pX;
    (*GiantStepFile).SetLength(1);
    (*GiantStepFile)(1) = h;
-}
-
-
-static
-void FileCleanup(long k, long l)
-{
-   delete BabyStepFile;
-   delete GiantStepFile;
-   delete HHH;
 }
 
 
@@ -1682,7 +1674,7 @@ void FetchGiantStep(zz_pX& g, long gs, const zz_pXModulus& F)
    zz_pX last;
 
    if (gs > l+1)
-      Error("bad arg to FetchGiantStep");
+      LogicError("bad arg to FetchGiantStep");
 
    if (gs == l+1) {
       last = (*GiantStepFile)(l);
@@ -1690,11 +1682,12 @@ void FetchGiantStep(zz_pX& g, long gs, const zz_pXModulus& F)
          rem(last, last, F);
          for (long i = 0; i < (*HHH).H.length(); i++)
             rem((*HHH).H[i], (*HHH).H[i], F);
+         build(*HHH1, *HHH, F);
          OldN = F.n;
       }
 
       (*GiantStepFile).SetLength(l+1);
-      CompMod((*GiantStepFile)(l+1), last, *HHH, F);
+      CompMod((*GiantStepFile)(l+1), last, *HHH1, F);
       g = (*GiantStepFile)(l+1);
    }
    else if (deg((*GiantStepFile)(gs)) >= F.n)
@@ -1909,7 +1902,7 @@ void NewDDF(vec_pair_zz_pX_long& factors,
 
 {
    if (!IsOne(LeadCoeff(f)))
-      Error("NewDDF: bad args");
+      LogicError("NewDDF: bad args");
 
    if (deg(f) == 0) {
       factors.SetLength(0);
@@ -1918,24 +1911,46 @@ void NewDDF(vec_pair_zz_pX_long& factors,
 
    if (deg(f) == 1) {
       factors.SetLength(0);
-      append(factors, cons(f, 1));
+      append(factors, cons(f, 1L));
       return;
    }
 
    long B = deg(f)/2;
+   
    long k = SqrRoot(B);
+
+   // we double the number of baby steps if it seems like
+   // baby steps are significantly cheaper than giant steps.
+   // The calculations below are closely tied to a test in GenerateBabySteps:
+   // if nbm >= sdf/2, then scale should be 1 (baby steps and giant steps balanced)
+   if (B >= 500) {
+      long sdf = SqrRoot(deg(f));
+      long nbm = NumBits(zz_p::modulus());
+      double scale = 0.25*double(sdf)/double(nbm);
+      if (scale < 1) scale = 1;
+      if (scale > 2) scale = 2;
+      k = long(scale*k);
+   }
+
    long l = (B+k-1)/k;
 
+   vec_zz_pX local_BabyStepFile;
+   vec_zz_pX local_GiantStepFile;
+   zz_pXArgument local_HHH;
+   zz_pXAltArgument local_HHH1;
+
+   BabyStepFile = &local_BabyStepFile;
+   GiantStepFile = &local_GiantStepFile;
+   HHH = &local_HHH;
+   HHH1 = &local_HHH1;
+   
    zz_pX h1;
    GenerateBabySteps(h1, f, h, k, verbose);
-
    GenerateGiantSteps(f, h1, l, verbose);
 
    vec_pair_zz_pX_long u;
    GiantRefine(u, f, k, l, verbose);
    BabyRefine(factors, u, k, l, verbose);
-
-   FileCleanup(k, l);
 }
 
 NTL_END_IMPL

@@ -4,12 +4,11 @@
 A Tour of NTL: Using NTL with GMP  </title>
 </head>
 
-<body bgcolor="#fff9e6">
 
 <center>
 <a href="tour-impl.html"><img src="arrow1.gif" alt="[Previous]" align=bottom></a>
  <a href="tour.html"><img src="arrow2.gif" alt="[Up]" align=bottom></a> 
-<a href="tour-time.html"> <img src="arrow3.gif" alt="[Next]" align=bottom></a>
+<a href="tour-gf2x.html"> <img src="arrow3.gif" alt="[Next]" align=bottom></a>
 </center>
 
 <h1> 
@@ -22,7 +21,7 @@ A Tour of NTL: Using NTL with GMP
 
 GMP is the GNU Multi-Precision library.
 You can get more information about it, as well as the latest version
-from <a href="http://www.swox.com/gmp">here.</a>
+from <a href="http://gmplib.org">here.</a>
 
 <p>
 
@@ -35,104 +34,73 @@ traditional long integer package.
 The speedup is most dramatic on x86 machines.
 
 <p>
-You can choose one of three different ways of implementing
-long integer arithmetic in NTL:
-<p>
-<ol>
-<li>
-One can use the traditional NTL long integer arithmtic package,
-and avoid dealing with GMP entirely.
+As of version 9.6.3, NTL uses GMP by default.
+You can disable GMP by passing <tt>NTL_GMP_LIP=off</tt>
+as an option to NTL's <tt>configure</tt> script.
+If you disable the use of GMP,
+NTL uses a long integer package derived
+from Arjen Lenstra's LIP package.
+This is not recommended: GMP is much faster.
 
 <p>
-<li>
-One can use traditional NTL long integer arithmtic package,
-but with GMP as a <i>supplemental</i> long integer package.
-This gives you many (though not all) of the performance benefits of GMP,
-but while still maintaining complete backward compatability.
-
-<p>
-<li>
-One can use GMP as the primary long integer package.
-This gives you essentially all of the performance benefits
-of GMP, but there are some minor backward incompatabilities 
-<a href="#compat">(see below)</a>.
-
-</ol>
-
-<p>
-
-<p>
-The use of GMP as the primary long integer package
-is the preferred method of using GMP.
-The use of GMP as a supplemental long integer package is intended
-primarily for backward compatability.
-
-<p>
-Building NTL with GMP (either as a supplemental or primary 
-long integer package) takes a few extra minutes work,
-and you certainly do not need to use NTL with GMP if you don't want to.
-As far as I know, GMP is only available on Unix systems
-and on Windows systems using Cygwin tools.
-
-<p>
-Even if you do not use GMP as the primary long integer package,
+Even if you do not use GMP,
 you should still read the <a href="#compat">section below
 on backward compatabilty</a>
 so that you can write portable code and avoid deprecated constructs.
+
+<p>
+<b>Note:</b> GMP is thread safe, so you should feel free to use it
+in a thread-safe build of NTL.
+However, the current version of GMP (v6.1) 
+is <i>not</i> entirely exception friendly (it may
+abort a running program, but only in some very extreme and
+unusal circumstances).
+
+
 
 <p>
 <h2>
 Downloading and building GMP
 </h2>
 <p>
-To dowload and build GMP on your machine, do the following:
+
+Many unix distributions now include GMP by default.
+But if not, it is pretty easy to install it directly from source,
+as follows.
 <p>
-<b> Step 1.</b>
-Download GMP from <a href="http://www.swox.com/gmp">here.</a>
+
+Download GMP from <a href="http://gmplib.org">here.</a>
 You will get a file <tt>gmp-XXX.tar.gz</tt>.
 <p>
-<b>Step 2.</b>
-Unpack GMP as follows:
+Now do the following:
 <pre>
    % gunzip gmp-XXX.tar.gz
    % tar xf gmp-XXX.tar
-</pre>
-This creates a directory <tt>gmp-XXX</tt>.
-Go there now:
-<pre>
    % cd gmp-XXX
-</pre>
-<p>
-<b>Step 3.</b>
-Build GMP as follows:
-<pre>
-   % ./configure --disable-shared --prefix=&lt;gmp_prefix&gt;
+   % ./configure --prefix=$HOME/sw
    % make
+   % make check
    % make install
 </pre>
-Here, <tt>&lt;gmp_prefix&gt;</tt> should be the name of 
-a directory where you would like to store 
-the GMP library components.
-This builds and installs GMP, creating files
-<tt>&lt;gmp_prefix&gt;/include/gmp.h</tt> and 
-<tt>&lt;gmp_prefix&gt;/lib/libgmp.a</tt>.
+This will build, test, and install GMP in <tt>$HOME/sw</tt>.
+Of course, change $HOME/sw to whatever you want (the default is 
+<tt>/usr/local</tt>).
+You will find the GMP header files in <tt>$HOME/sw/include</tt> 
+and the compiled binaries in <tt>$HOME/sw/lib</tt>.
 
 <p>
-The options <tt>--disable-shared</tt> and <tt>--prefix=&lt;gmp_prefix&gt;</tt>
-to <tt>configure</tt>
-are both optional.
-The first option disables the creation of shared libraries,
-which simplifies things just a bit (in particular, this documentation).
-If you don't  pass the second option, then 
-<tt>&lt;gmp_prefix&gt;</tt> defaults to 
-<tt>/usr/local</tt>, and 
-and you have to have root permissions to run <tt>make install</tt>.
+You can also supply the option
+<tt>--disable-shared</tt> to the <tt>configure</tt> script,
+if you only want static libraries.
+However, if you ultimately want to build NTL as a shared
+library, then you must also buld GMP as a shared library.
 
 <p>
-Executing <tt>make uninstall</tt> undoes the <tt>make install</tt>.
-<p>
-Executing <tt>make distclean</tt> removes everything
-created by <tt>configure</tt> and <tt>make</tt>.
+You must ensure that NTL and GMP have the same 
+<a href="tour-unix.html#abi">ABI</a>.
+Usually, GMP's configure script will automatically
+choose a 64-bit ABI if available.
+
 
 <p>
 <h2>
@@ -140,72 +108,66 @@ Building and using NTL with GMP
 </h2>
 <p>
 
-When building NTL with GMP, you have to tell NTL that you want to
-use GMP as the primary long integer package, 
-and where the include files and library are.
-The easiest way to do this is by passing the argument 
-<tt>NTL_GMP_LIP=on</tt> to the configuration script
-when you are <a href="tour-unix.html">installing NTL</a>.
-That is, you execute:
+When you are <a href="tour-unix.html">installing NTL</a>,
+if you installed GMP in <tt>$HOME/sw</tt> as above,
+and you also want to install NTL in <tt>$HOME/sw</tt>,
+you execute:
 <pre>
-   % ./configure NTL_GMP_LIP=on  GMP_PREFIX=&lt;gmp_prefix&gt;
+   % ./configure PREFIX=$HOME/sw GMP_PREFIX=$HOME/sw
 </pre>
-where <tt>&lt;gmp_prefix&gt;</tt> is the name of the directory in
-which GMP was installed above.
+You can write this more simply as 
+<pre>
+   % ./configure DEF_PREFIX=$HOME/sw 
+</pre>
+Here, <tt>DEF_PREFIX</tt> is a variable that is used
+to specify the location of all software,
+and it defaults to <tt>/usr/local</tt>.
+
+
 <p>
-If you need more fine-grained control, you can execute:
+If you installed GMP in <tt>/usr/local</tt> (or some other
+standard system directory where your compiler will look by default)
+then simply
 <pre>
-   % ./configure NTL_GMP_LIP=on GMP_INCDIR=-I&lt;gmp_prefix&gt;/include GMP_LIBDIR=-L&lt;gmp_prefix&gt;/lib
+   % ./configure PREFIX=$HOME/sw 
 </pre>
-Alternatively, the following achieves more or less the same thing:
-<pre>
-   % ./configure NTL_GMP_LIP=on CPPFLAGS=-I&lt;gmp_prefix&gt;/include LDFLAGS=-L&lt;gmp_prefix&gt;/lib
-</pre>
-<p>
-If you installed GMP in a standard system directory,
+does the job.
+Moreover, if NTL is also to be installed in <tt>/usr/local</tt>,
 then
 <pre>
-   % ./configure NTL_GMP_LIP=on
+   % ./configure 
 </pre>
 does the job.
 
 <p>
-If instead you want to use GMP as a supplemental long integer package,
-you should pass the argument <tt>NTL_GMP_HACK=on</tt> to the configure script,
-instead of <tt>NTL_GMP_LIP=on</tt>.
-One still has to specify where to find GMP using the <tt>GMP_PREFIX</tt>
-variable in the configuration script.
-
-<p>
 Instead of passing arguments to the configure script,
-you can also just edit the <tt>config.h</tt> and makefile by hand.
+you can also just edit the <tt>config.h</tt> and <tt>makefile</tt> by hand.
 The documentation in these files should be self-explanatory.
+
 
 <p>
 When compiling programs that use NTL with GMP,
 you need to link with the GMP library.
-If GMP is not installed in a standard place, this just means adding
-<tt>-L&lt;gmp_prefix&gt;/lib -lgmp</tt> to the compilation command.
+If GMP is installed as above in 
+<tt>$HOME/sw</tt>, rather than in a standard system directory,
+ this just means adding
+<tt>-L$HOME/sw/lib -lgmp</tt> to the compilation command.
 If you installed GMP in a standard system directory,
 then just <tt>-lgmp</tt> does the job.
+Note that <tt>-lgmp</tt> must come <i>after</i> <tt>-lntl</tt>
+on the command line.
+Finally, if NTL and GMP are installed 
+as shared libraries, then you don't even need <tt>-lgmp</tt>.
+
 
 <p>
-NTL has been tested and works correctly with GMP versions 3.1 and 3.1.1
-as the primary long integer package.
-It is not possible to use versions of GMP prior to 3.1 as the
-primary long integer package.
+NTL has been tested and works correctly with GMP versions 3.1,  3.1.1,
+4.1.4, 5.1, 6.0, and 6.1 (among others).
+It is not possible to use versions of GMP prior to 3.1 with NTL.
 
 <p>
-
-NTL has been tested and works correctly
-with versions 2.0.2, 3.0.1, 3.1, and 3.1.1 of GMP as a supplemental 
-long integer package.
-It is not recommended to use versions of GMP prior to 3.1.1,
-as these are generally more buggy and less efficient.
-
-<p>
-When using NTL with GMP as either primary or supplemental
-long integer package, as a user of NTL, you do not need to
+When using NTL with GMP, 
+as a user of NTL, you do not need to
 know or understand anything about the the GMP library.
 So while there is detailed documentation available about how
 to use GMP, you do not have to read it.
@@ -213,45 +175,7 @@ The programming interface to the long integer package
 completely hides implementation details.
 
 
-<p>
-<h2>
-Some implementation details
-</h2>
-<p>
 
-When using GMP as the primary long integer package, 
-the code used by NTL is essentially a layer of <tt>C</tt> routines
-that call the low level <tt>mpn</tt> routines in the GMP package.
-These NTL wrapper routines provide essentially the same 
-functionality of the higher level <tt>mpz</tt> routines in GMP,
-but while presenting an interface to the rest of NTL that is almost identical
-to that of the
-traditional NTL long integer package.
-There are, however, some very minor backward incompatabilities 
-<a href="#compat">(see below)</a>.
-
-<p>
-When using GMP as a supplemental long integer package,
-the code employs
-a "quick and dirty", yet fairly effective hack.
-This quick and dirty
-approach converts "on the fly"
-between the classic LIP and GMP representations.
-This makes the use of GMP <i>completely</i> invisible to higher layer software.
-Of course, there is a penalty: converting between representations takes
-time.
-For operations like addition, conversion would take longer
-than performing the operation, and so it is not done.
-However, for computationally expensive
-operations like multiplication, the "overhead" is not so bad,
-at least for numbers that are not too small.
-To multiply two 256-bit numbers on a Pentium-II, the extra time
-required for the data conversions is just 35% of the time to
-do the multiplication in GMP, i.e., the "overhead" is 35%.
-For 512-bit numbers, the corresponding opportunity cost is about 14%,
-and for 1024-bit numbers, it is less than 10%.
-For smaller numbers, the opportunity cost is greater, but
-never much worse than about 50%.
 
 <p>
 <h2>
@@ -263,7 +187,7 @@ Backward compatbility
 
 With version 5.0 of NTL, some aspects of the programming interface
 are 'deprecated' so as to allow the use of another long integer package,
-such as GMP, as the primary long integer package.
+such as GMP, as the long integer package.
 
 <p>
 Prior to version 5.0, the macro <tt>NTL_NBITS</tt> was defined,
@@ -271,16 +195,16 @@ along with the macro <tt>NTL_RADIX</tt> defined to be
 <tt>(1L &lt;&lt; NTL_NBITS)</tt>.
 While these macros are still available when using NTL's traditional
 long integer package (i.e., when <tt>NTL_GMP_LIP</tt> is not set),
-they are not available when using the GMP as the primary long integer
+they are not available when using the GMP as the long integer
 package (i.e., when <tt>NTL_GMP_LIP</tt> is set).
 Furthermore, when writing portable programs, one should avoid these macros.
 
 <p>
 
 
-Also, the static function <tt>long ZZ::digit(const ZZ &amp;);</tt>
+Also, the static function <tt>long ZZ::digit(const ZZ &amp;, long);</tt>
 is defined when using traditional long integer arithmetic,
-but is not available when using GMP as the primary long integer package,
+but is not available when using GMP as the long integer package,
 and in any case, its use should be avoided when writing portable programs. 
 
 
@@ -368,8 +292,9 @@ changing the programs should be quite easy.
 <center>
 <a href="tour-impl.html"><img src="arrow1.gif" alt="[Previous]" align=bottom></a>
  <a href="tour.html"><img src="arrow2.gif" alt="[Up]" align=bottom></a> 
-<a href="tour-time.html"> <img src="arrow3.gif" alt="[Next]" align=bottom></a>
+<a href="tour-gf2x.html"> <img src="arrow3.gif" alt="[Next]" align=bottom></a>
 </center>
+
 
 
 </body>

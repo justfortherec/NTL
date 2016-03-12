@@ -33,14 +33,19 @@ double x;
 long e;
 
 xdouble() : x(0), e(0) { }
+explicit xdouble(double a) : x(0), e(0) { *this = a; }
 
 inline xdouble& operator=(double a);
+
 
 ~xdouble() { }
 
 void normalize();
 
-static long oprec;
+static 
+NTL_CHEAP_THREAD_LOCAL 
+long oprec;
+
 static void SetOutputPrecision(long p);
 static long OutputPrecision() { return oprec; }
 
@@ -217,6 +222,19 @@ inline void conv(xdouble& x, float a) { x = to_xdouble(a); }
 inline void conv(xdouble& x, double a) { x = to_xdouble(a); }
 inline void conv(xdouble& x, const char *a) { x = to_xdouble(a); }
 
+
+
+/* additional legacy conversions for v6 conversion regime */
+
+
+inline void conv(unsigned int& x, const xdouble& a)
+   { long z; conv(z, a); conv(x, z); }
+
+inline void conv(unsigned long& x, const xdouble& a)
+   { long z; conv(z, a); conv(x, z); }
+
+/* ------------------------------------- */
+
 NTL_SNS ostream& operator<<(NTL_SNS ostream& s, const xdouble& a);
 
 NTL_SNS istream& operator>>(NTL_SNS istream& s, xdouble& x);
@@ -253,6 +271,10 @@ inline xdouble MulSub(const xdouble& a, const xdouble& b,
 
 double log(const xdouble& a);
 xdouble xexp(double x);
+
+
+inline xdouble exp(const xdouble& x) { return xexp(to_double(x)); }
+
 
 NTL_CLOSE_NNS
 

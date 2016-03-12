@@ -9,7 +9,7 @@ NTL_START_IMPL
 
 const ZZX& ZZX::zero()
 {
-   static ZZX z;
+   NTL_THREAD_LOCAL static ZZX z;
    return z;
 }
 
@@ -30,7 +30,7 @@ void conv(ZZX& x, const ZZ_pX& a)
 
 istream& operator>>(istream& s, ZZX& x)
 {
-   s >> x.rep;
+   NTL_INPUT_CHECK_RET(s, s >> x.rep);
    x.normalize();
    return s;
 }
@@ -48,9 +48,8 @@ void ZZX::normalize()
 
    n = rep.length();
    if (n == 0) return;
-   p = rep.elts() + (n-1);
-   while (n > 0 && IsZero(*p)) {
-      p--; 
+   p = rep.elts() + n;
+   while (n > 0 && IsZero(*--p)) {
       n--;
    }
    rep.SetLength(n);
@@ -122,22 +121,30 @@ void SetCoeff(ZZX& x, long i, const ZZ& a)
    long j, m;
 
    if (i < 0) 
-      Error("SetCoeff: negative index");
+      LogicError("SetCoeff: negative index");
 
-   if (i >= (1L << (NTL_BITS_PER_LONG-4)))
-      Error("overflow in SetCoeff");
+   if (NTL_OVERFLOW(i, 1, 0))
+      ResourceError("overflow in SetCoeff");
 
    m = deg(x);
 
+   if (i > m && IsZero(a)) return; 
+
    if (i > m) {
-      long pos = x.rep.position(a);
-      x.rep.SetLength(i+1);
+      /* careful: a may alias a coefficient of x */
 
-      if (pos != -1)
-         x.rep[i] = x.rep.RawGet(pos);
-      else
+      long alloc = x.rep.allocated();
+
+      if (alloc > 0 && i >= alloc) {
+         ZZ aa = a;
+         x.rep.SetLength(i+1);
+         x.rep[i] = aa;
+      }
+      else {
+         x.rep.SetLength(i+1);
          x.rep[i] = a;
-
+      }
+         
       for (j = m+1; j < i; j++)
          clear(x.rep[j]);
    }
@@ -147,15 +154,16 @@ void SetCoeff(ZZX& x, long i, const ZZ& a)
    x.normalize();
 }
 
+
 void SetCoeff(ZZX& x, long i)
 {
    long j, m;
 
    if (i < 0) 
-      Error("coefficient index out of range");
+      LogicError("coefficient index out of range");
 
-   if (i >= (1L << (NTL_BITS_PER_LONG-4)))
-      Error("overflow in SetCoeff");
+   if (NTL_OVERFLOW(i, 1, 0))
+      ResourceError("overflow in SetCoeff");
 
    m = deg(x);
 
@@ -220,6 +228,7 @@ void conv(ZZX& x, const ZZ& a)
    }
 }
 
+
 void conv(ZZX& x, long a)
 {
    if (a == 0) 
@@ -282,7 +291,7 @@ void add(ZZX& x, const ZZX& a, const ZZ& b)
    else {
       // ugly...b could alias a coeff of x
 
-      ZZ *xp = x.rep.elts();
+      ZZ *xp = x.rep.elts(); 
       add(xp[0], a.rep[0], b);
       x.rep.SetLength(n);
       xp = x.rep.elts();
@@ -293,6 +302,7 @@ void add(ZZX& x, const ZZX& a, const ZZ& b)
       x.normalize();
    }
 }
+
 
 void add(ZZX& x, const ZZX& a, long b)
 {
@@ -496,8 +506,8 @@ void PlainMul(ZZX& x, const ZZX& a, const ZZX& b)
       jmax = min(da, i);
       clear(accum);
       for (j = jmin; j <= jmax; j++) {
-	 mul(t, ap[j], bp[i-j]);
-	 add(accum, accum, t);
+         mul(t, ap[j], bp[i-j]);
+         add(accum, accum, t);
       }
       xp[i] = accum;
    }
@@ -544,13 +554,13 @@ void PlainSqr(ZZX& x, const ZZX& a)
       jmax = jmin + m2 - 1;
       clear(accum);
       for (j = jmin; j <= jmax; j++) {
-	 mul(t, ap[j], ap[i-j]);
-	 add(accum, accum, t);
+         mul(t, ap[j], ap[i-j]);
+         add(accum, accum, t);
       }
       add(accum, accum, accum);
       if (m & 1) {
-	 sqr(t, ap[jmax + 1]);
-	 add(accum, accum, t);
+         sqr(t, ap[jmax + 1]);
+         add(accum, accum, t);
       }
 
       xp[i] = accum;
@@ -569,7 +579,8 @@ void PlainMul(ZZ *xp, const ZZ *ap, long sa, const ZZ *bp, long sb)
    long sx = sa+sb-1;
 
    long i, j, jmin, jmax;
-   static ZZ t, accum;
+   NTL_ZZRegister(t);
+   NTL_ZZRegister(accum);
 
    for (i = 0; i < sx; i++) {
       jmin = max(0, i-sb+1);
@@ -582,6 +593,7 @@ void PlainMul(ZZ *xp, const ZZ *ap, long sa, const ZZ *bp, long sb)
       xp[i] = accum;
    }
 }
+
 
 
 static
@@ -816,7 +828,8 @@ void PlainSqr(ZZ* xp, const ZZ* ap, long sa)
 
    long i, j, jmin, jmax;
    long m, m2;
-   static ZZ t, accum;
+   NTL_ZZRegister(t);
+   NTL_ZZRegister(accum);
 
    for (i = 0; i <= d; i++) {
       jmin = max(0, i-da);
@@ -826,13 +839,13 @@ void PlainSqr(ZZ* xp, const ZZ* ap, long sa)
       jmax = jmin + m2 - 1;
       clear(accum);
       for (j = jmin; j <= jmax; j++) {
-	 mul(t, ap[j], ap[i-j]);
-	 add(accum, accum, t);
+         mul(t, ap[j], ap[i-j]);
+         add(accum, accum, t);
       }
       add(accum, accum, accum);
       if (m & 1) {
-	 sqr(t, ap[jmax + 1]);
-	 add(accum, accum, t);
+         sqr(t, ap[jmax + 1]);
+         add(accum, accum, t);
       }
 
       xp[i] = accum;
@@ -840,6 +853,7 @@ void PlainSqr(ZZ* xp, const ZZ* ap, long sa)
 }
 
 
+static
 void KarSqr(ZZ *c, const ZZ *a, long sa, ZZ *stk)
 {
    if (sa == 1) {
@@ -895,6 +909,7 @@ void KarSqr(ZZ *c, const ZZ *a, long sa, ZZ *stk)
 
    KarAdd(c+hsa, T2, hsa2-1);
 }
+
       
 void KarSqr(ZZX& c, const ZZX& a)
 {

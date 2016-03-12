@@ -13,9 +13,7 @@ Defines the class mat_ZZ.
 #include <NTL/matrix.h>
 #include <NTL/vec_vec_ZZ.h>
 
-NTL_matrix_decl(ZZ,vec_ZZ,vec_vec_ZZ,mat_ZZ)
-NTL_io_matrix_decl(ZZ,vec_ZZ,vec_vec_ZZ,mat_ZZ)
-NTL_eq_matrix_decl(ZZ,vec_ZZ,vec_vec_ZZ,mat_ZZ)
+typedef Mat<ZZ> mat_ZZ; // backward compatibility
 
 void add(mat_ZZ& X, const mat_ZZ& A, const mat_ZZ& B); 
 // X = A + B
@@ -69,8 +67,7 @@ void solve1(ZZ& d, vec_ZZ& x, const mat_ZZ& A, const vec_ZZ& b);
 // such that d > 0 and minimal.
 // Note that d is a positive divisor of the determinant,
 // and is not in general equal to the determinant.
-// The routine is deterministic, and uses either a Hensel lifting
-// strategy.
+// The routine is deterministic, and uses a Hensel lifting strategy.
 
 // For backward compatability, there is also a routine called
 // HenselSolve1 that simply calls solve1.

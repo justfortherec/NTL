@@ -4,9 +4,8 @@
 A Tour of NTL: Obtaining and Installing NTL for UNIX  </title>
 </head>
 
-<body bgcolor="#fff9e6">
 <center>
-<a href="tour-stdcxx.html"><img src="arrow1.gif" alt="[Previous]" align=bottom></a>
+<a href="tour-modules.html"><img src="arrow1.gif" alt="[Previous]" align=bottom></a>
  <a href="tour.html"><img src="arrow2.gif" alt="[Up]" align=bottom></a> 
 <a href="tour-win.html"> <img src="arrow3.gif" alt="[Next]" align=bottom></a>
 </center>
@@ -19,6 +18,12 @@ A Tour of NTL: Obtaining and Installing NTL for UNIX
 
 <p> <hr> <p>
 
+This procedure should work on most Unix or Unix-like platorms
+(including Mac OSX, and Windows with MinGW or Cygwin tools).
+
+<p>
+
+
 To obtain the source code and documentation for NTL,
 <a href="http://www.shoup.net/ntl/download.html">
 download <tt>ntl-xxx.tar.gz</tt></a>,
@@ -26,12 +31,118 @@ placing it a directory, and then, working in this directory,
 do the following.
 Here, "<tt>xxx</tt>" denotes the current version number.
 
+
+
+<p>
+<pre>
+   % gunzip ntl-xxx.tar.gz
+   % tar xf ntl-xxx.tar
+   % cd ntl-xxx/src
+   % ./configure 
+   % make
+   % make check
+   % make install
+</pre>
+
+This will build, test, and install NTL in 
+<tt>/usr/local</tt>.
+For this to work, GMP must already be installed
+(most Unix distributions already come with GMP installed,
+but see <a href="tour-gmp.html">this page</a> for more
+details).
+If you really do not want to use GMP,
+you can pass the option
+<tt>NTL_GMP_LIP=off</tt> 
+to <tt>configure</tt>.
+
+<p>
+After installation,
+you will find the NTL header files in <tt>/usr/local/include/NTL</tt>
+ and the compiled binary 
+in <tt>/usr/local/lib/libntl.a</tt>
+(this is a <i>static</i> library -- if you want a <i>shared</i>
+library, <a href="#shared">see below</a>).
+Documentation is in <tt>/usr/local/share/doc</tt>,
+with the main entry-point at <tt>/usr/local/share/doc/tour.html</tt>.
+
+
+
+<p>
+If you want very high-performance for polynomial arithmetic
+over <i>GF(2)</i>, you may want to consider using the <tt>gf2x</tt> library.
+To do this, <tt>gf2x</tt> must already be installed.
+In addition, you should invoke <tt>configure</tt>
+with the option <tt>NTL_GF2X_LIB=on</tt>.
+<a href="tour-gf2x.html">This page</a> provides more details.
+
+ 
+
+<p>
+If you want to install NTL install NTL somewhere besides <tt>/usr/local</tt>,
+pass the option <tt>PREFIX=/path/to/install/ntl</tt> to 
+<tt>configure</tt>.
+If GMP is installed somewhere besides <tt>/usr/local</tt>,
+pass the optopn 
+<tt>GMP_PREFIX=/path/to/gmp</tt> 
+to <tt>configure</tt>.
+You can also pass
+<tt>GF2X_PREFIX=/path/to/gf2x</tt> 
+to <tt>configure</tt>,
+if <tt>gf2x</tt> is installed somewhere besides <tt>/usr/local</tt>.
+As a shorthand, you pass the option 
+<tt>DEF_PREFIX=/path/to/all/software</tt>, which will
+override the default for <tt>PREFIX</tt>,
+<tt>GMP_PREFIX</tt>, and <tt>GF2X_PREFIX</tt>.
+
+
+
+<p>
+Now suppose you want to compile a program that uses NTL.
+Suppose you are working in some arbitrary directory and <tt>foo.c</tt>
+is your program.
+Assume that you have installed NTL in <tt>/usr/local</tt> as above.
+The following should work:
+<pre>
+   % g++ -g -O2 foo.c -o foo -lntl -lgmp -lm
+</pre>
+If you have installed NTL and/or GMP is a non-standard location,
+say <tt>/path/to/sw</tt>,
+then:
+<pre>
+   % g++ -g -O2 -I/path/to/sw/include foo.c -o foo  -L/path/to/sw/lib -lntl -lgmp -lm
+</pre>
+If you build NTL with <tt>gf2x</tt>, just add the option
+<tt>-lgf2x</tt> to the above, right after <tt>-lgmp</tt>.
+
+<p>
+If you are working in the NTL <tt>src</tt> directory itself,
+you can just run:
+<pre>
+   % make foo
+</pre>
+to compile a program <tt>foo.c</tt>, as above.
+
+<p>
+<h2>
+More Details
+</h2>
+<p>
+What follows is a more detailed description of the installation process.
+
+
+
+
 <p>
 <b>Step 1.</b>
 Extract the source files by executing:
 <pre>
    % gunzip ntl-xxx.tar.gz
    % tar xvf ntl-xxx.tar
+</pre>
+
+On most systems, the following shortcut works:
+<pre>
+   % tar xzvf ntl-xxx.tar.gz
 </pre>
 
 <p>
@@ -76,21 +187,33 @@ Here are the most important variables, and their default values.
 
 <p>
 <pre>
-   CC=gcc               # The C compiler
-   CXX=g++              # The C++ compiler
-   CFLAGS=-O2           # C complilation flags
-   CXXFLAGS=$(CFLAGS)   # C++ compilation flags (by default, same as CFLAGS)
 
-   PREFIX=/usr/local    # Directory in which to install NTL library components
+CXX=g++              # The C++ compiler
 
-   NTL_STD_CXX=off      # ISO Mode switch
+CXXFLAGS=-g -O2      # C++ complilation flags
 
-   NTL_GMP_LIP=off      # Switch 'on' to enable the use of GMP as the primary
-                        # long integer package
-   NTL_GMP_HACK=off     # Switch 'on' to enable the use of GMP as a supplemental
-                        # long integer package
+NATIVE=on            # Compiles code targeted to the current hardware
 
-   GMP_PREFIX=none      # Directory in which GMP components have been installed
+DEF_PREFIX=/usr/local# Default software directory
+
+PREFIX=$(DEF_PREFIX) # Directory in which to install NTL library components
+SHARED=off           # Generate a shared library (as well as static)
+
+NTL_THREADS=off      # compile in thread-safe mode
+NTL_THREAD_BOOST=off # compile with thread boosting enabled
+NTL_EXCEPTIONS=off   # compile with exceptions enabled
+
+NTL_GMP_LIP=on       # Switch to enable the use of GMP as primary 
+                     #   long integer package
+
+GMP_PREFIX=$(DEF_PREFIX) # Directory in which GMP components are installed
+
+NTL_GF2X_LIB=off     # Switch to enable the use of the gf2x package
+                     #   for faster arithmetic GF(2)[X]
+
+GF2X_PREFIX=$(DEF_PREFIX) # Directory in which gf2x components are installed
+
+
 </pre>
 
 <p>
@@ -109,51 +232,53 @@ the configure script.
 
 <p>
 <li>
-If your C/C++ compilers are called cc/CC, run:
+If your C++ compilers is called CC, run:
 <pre>
-   % ./configure CC=cc CXX=CC
+   % ./configure CXX=CC
 </pre>
 
 <p>
 <li>
-If you want to use, say, the options <tt>-g</tt> and <tt>-O</tt> for 
-compiling <tt>C</tt> and <tt>C++</tt>, run:
+If you want to use, say, the options <tt>-g</tt>, <tt>-O3</tt>,
+compiling <tt>C++</tt>, run:
 <pre>
-   % ./configure "CFLAGS=-g -O"
+   % ./configure "CXXFLAGS=-g -O3"
 </pre>
-Note the use of quotes to keep the argument in one piece.
+
 
 <p>
-<li>
-If <a href="tour-gmp.html">GMP (the GNU Multi-Precision package)</a>  
-is installed in a standard system directory, and you want to use it
-to obtain better performance for long integer arithemtic, run:
-<pre>
-   % ./configure NTL_GMP_LIP=on
-</pre>
-If GMP was installed in a non-standard directory <tt>&lt;gmp_prefix&gt;</tt>,
-so that <tt>&lt;gmp_prefix&gt;/include</tt> contains <tt>gmp.h</tt>
-and <tt>&lt;gmp_prefix&gt;/lib</tt> contains <tt>libgmp.a</tt>,
+If GMP was installed in 
+ <tt>$HOME/sw</tt>,
 run:
 <pre>
-   % ./configure NTL_GMP_LIP=on GMP_PREFIX=&lt;gmp_prefix&gt;
+   % ./configure GMP_PREFIX=$HOME/sw
 </pre>
 Go <a href="tour-gmp.html">here</a> for complete details.
 
-<p>
-<li>
-If you want to use 
-<a href="tour-stdcxx.html">ISO mode to enable namespaces</a>, run:
-<pre>
-   % ./configure NTL_STD_CXX=on
-</pre>
 
 <p>
 <li>
-If you want to install NTL in directory <tt>&lt;prefix&gt;</tt>,
+If <a href="tour-gf2x.html"><tt>gf2x</tt></a>  
+is installed in a standard system directory, and you want to use it
+to obtain better performance for polynomial arithemtic over <i>GF(2)</i>, 
 run:
 <pre>
-   % ./configure PREFIX=&lt;prefix&gt;
+   % ./configure NTL_GF2X_LIB=on
+</pre>
+If <tt>gf2x</tt> was installed in 
+ <tt>$HOME/sw</tt>,
+run:
+<pre>
+   % ./configure NTL_GF2X_LIB=on GF2X_PREFIX=$HOME/sw
+</pre>
+Go <a href="tour-gf2x.html">here</a> for complete details.
+
+<p>
+<li>
+If you want to install NTL in the directory <tt>$HOME/sw</tt>,
+run:
+<pre>
+   % ./configure PREFIX=$HOME/sw
 </pre>
 </ul>
 
@@ -163,9 +288,9 @@ See <a href="config.txt"><tt>config.txt</tt></a> for a complete
 description.
 
 <p>
-Note that all of these configuration options can also be set
+Note that many of these configuration options can also be set
 by editing the two files <tt>makefile</tt>
-and <tt>../include/NTL/def_config.h</tt> by hand.
+and <tt>../include/NTL/config.h</tt> by hand.
 These files are fairly simple and well documented, and so this is not
 too hard to do.
 
@@ -175,14 +300,6 @@ contains a backup copy of the original <tt>config.h</tt> file,
 and that the file "<tt>def_makefile</tt>"
 contains a backup copy of the original <tt>makefile</tt> file.
 
-<p>
-This command is intended only as a convenience 
-and -- more importantly -- to allow the configuration process
-to be script driven.
-This script does not perform any "magic", like finding out what
-the local C compiler is called, etc.  
-If the defaults are not
-correct for your platform, you have to set an appropriate variable.
 
 
 
@@ -214,18 +331,17 @@ own, and prints some diagnostics to the terminal.
 
 <p>
 <li>
-A script is run that "automagically"
-determines the best way to write a timing function
-on your platform.
-It tries different routines in the files <tt>GetTime1.c</tt>,
-<tt>GetTime2.c</tt>, etc., and when it finds a good one,
-it copies the file into <tt>GetTime.c</tt>.
+Several scripts are run to obtain more information
+about your system (e.g.,
+to find a timing function, a "getpid" function, 
+and to detect if things like Intel AVX intrinsics work).
+
 
 <p>
 <li>
-The files "<tt>lip_gmp_aux.c</tt>" and "<tt>../include/NTL/gmp_aux.h</tt>"
-are generated for use with GMP.
-If not using GMP, these files are still created, but they are empty.
+The file  "<tt>../include/NTL/gmp_aux.h</tt>"
+is generated for use with GMP.
+If not using GMP, this file is still created, but it is empty.
 
 
 <p>
@@ -244,7 +360,9 @@ will be in
 effect while the wizard runs, and will be retained in the updated
 <tt>config.h</tt> file, with the exception of the flags
 <pre>
-   NTL_LONG_LONG NTL_AVOID_FLOAT NTL_TBL_REM NTL_AVOID_BRANCHING NTL_FFT_PIPELINE
+   NTL_LONG_LONG NTL_AVOID_FLOAT NTL_TBL_REM NTL_TBL_REM_LL NTL_AVOID_BRANCHING 
+   NTL_SPMM_ULL NTL_SPMM_ASM NTL_GF2X_NOINLINE NTL_GF2X_ALTCODE
+   NTL_GF2X_ALTCODE1 NTL_FFT_LAZYMUL NTL_FFT_BIGTAB NTL_PCLMUL
 </pre>
 which are set by the wizard. 
 Also note that if you <i>do not</i> want the wizard to run,
@@ -258,7 +376,8 @@ and then creates the library "<tt>ntl.a</tt>" in the current directory.
 </ol>
 
 <p>
-Note that for finer control  you can optionally  break up this process into the four
+Note that for finer control  you can optionally  break up this process 
+into the five
 component steps:
 <pre>
    % make setup1
@@ -284,7 +403,8 @@ Executing <tt>make install</tt>
 copies a number of files to a directory <tt>&lt;prefix&gt;</tt> that you
 specify by passing <tt>PREFIX=&lt;prefix&gt;</tt>
 as an argument to <tt>configure</tt> at configuration time,
-or as an argument to <tt>make install</tt> at installation time.
+or as an argument to <tt>make install</tt> at installation time
+(e.g., <tt>make install PREFIX=/path/to/sw</tt>).
 The default is <tt>/usr/local</tt>, so either you need root 
 permissions, or you choose a <tt>&lt;prefix&gt;</tt> for which
 you have write permission.
@@ -292,7 +412,7 @@ The files <tt>../include/NTL/*</tt> are copied into
 <tt>&lt;prefix&gt;/include/NTL</tt>.
 The file <tt>ntl.a</tt> is copied to <tt>&lt;prefix&gt;/lib/libntl.a</tt>.
 The files <tt>../doc/*</tt> are copied into
-<tt>&lt;prefix&gt;/doc/NTL</tt>.
+<tt>&lt;prefix&gt;/share/doc/NTL</tt>.
 
 <p>
 You can also "fine tune" the installation procedure further.
@@ -314,91 +434,110 @@ To rebuild after executing <tt>make clean</tt>, execute <tt>make ntl.a</tt>.
 
 
 <p>
-Assuming you have installed NTL as above,
-to compile a program <tt>foo.c</tt> that uses NTL,
-execute
-<pre>
-   g++ -I&lt;prefix&gt;/include; -L&lt;prefix&gt;/lib foo.c -o foo -lntl -lm
-</pre>
-This compiles <tt>foo.c</tt> as a <tt>C++</tt> program
-and creates the binary <tt>foo</tt>.
-<p>
-If you built NTL using <a href="tour-gmp.html">GMP</a>, execute:
-<pre>
-   g++ -I&lt;prefix&gt;/include -L&lt;prefix&gt;/lib -L&lt;gmp_prefix&gt;/lib  foo.c -lntl -lgmp -lm
-</pre>
-<p>
-Of course, if <tt>&lt;prefix&gt;</tt> and <tt>&lt;gmp_prefix&gt;</tt>
-are the same, you do not need to  duplicate the <tt>-L</tt> 
-flags, and if either are standard directories, like <tt>/usr/local</tt>,
-you can leave out the corresponding <tt>-I</tt> and <tt>-L</tt>
-flags altogether.
-<p>
-This works even if you are not working in the directory
-in which you built NTL.
-If you <i>are</i> working in that directory, you can just execute
-<pre>
-   make foo
-</pre>
-
+<h2>
+<a name="shared">
+Building a Shared Library
+</a>
+</h2>
 <p>
 
-<p>
+
+By default, the above installation procedure builds
+a <i>static</i> library only.
+Static libraries are nice because the procedures for building
+and using them are nearly identical across various flavors
+of Unix.
+However, static libraries have their drawbacks, and sometimes
+it is desirable to build a <i>shared</i> library.
+This can be done (in theory) by simply passing <tt>SHARED=on</tt> to 
+NTL's <tt>configure</tt>.
 
 <p>
-<b>Known build problems.</b>
+If you set <tt>SHARED=on</tt>, then behind the scenes,
+the procedure used by the <tt>makefile</tt> changes a bit.
+In particular, the magical GNU program <tt>libtool</tt> is used
+to deal with all idiosyncracies of shared libraries.
+You may need to set the
+configuration variable <tt>LIBTOOL</tt>, to point to another version of
+<tt>libtool</tt>.  
+For example, on <i>Mac OSX</i>, the built-in command called <tt>libtool</tt>
+is not
+actually the GNU <tt>libtool</tt> program; 
+in this case, you will want to set
+<tt>LIBTOOL=glibtool</tt>.  
+On other systems, it may be necssary to download and
+install a fresh copy of the libtool program (which can be obtained from
+<a href="http://www.gnu.org/software/libtool">here</a>). 
+Note that if <tt>SHARED=on</tt>, then 
+in addition to using the <tt>libtool</tt> program, the <tt>makefile</tt> 
+relies on
+features specific to GNU make.
 
 <p>
-NTL should compile without errors.
-The only known problems on Unix systems are due to compiler bugs.
-In particular, some versions of <tt>g++</tt> on some platforms
-may cause the compiler to crash.
+Note that if you want to build NTL as a shared library,
+then if you use them, GMP and <tt>gf2x</tt> must also 
+be built and installed as shared libraries.
+Also note that to use a shared library version of NTL,
+you may have to do something special, like set a special
+shell variable:  the output generated by the <tt>libtool</tt>
+program during <tt>make install</tt> should give specific
+instructions.
+In addition, if NTL is built as a shared library, then
+you typically do not have to include <tt>-lgmp</tt> (if using GMP),
+or <tt>-lgf2x</tt> (if using <tt>gf2x</tt>), or corresponding
+<tt>-L</tt> flags, or <tt>-lm</tt>  
+on
+the command line when compiling programs that use NTL.
+
 
 <p>
-I have had reports that version 2.96 of <tt>g++</tt> has this
-problem on some platforms, although I have not been able to re-create
-the problem on any platform that I have access to (even with v2.96).
-
-<p>
-I also have reports that other versions of <tt>g++</tt> crash
-when compiling NTL on a DEC Alpha.
-
-<p>
-Hopefully, these and similar bugs in <tt>g++</tt> will eventually
-be fixed by the <tt>g++</tt> people.
-In the meantime, a very crude work-around is to compile the files
-that cause <tt>g++</tt> to crash without optimization.
-An easy way to do this is as follows:
-<ol>
-<li>
-if the build crashes compiling, say, <tt>foo.c</tt>,
-copy <tt>makefile</tt> to, say, <tt>mf2</tt>;
-edit file <tt>mf2</tt>, deleting the <tt>-O2</tt> from the <tt>CFLAGS</tt>
-definition;
-<li>
-run the command <tt>make -f mf2 foo.o</tt>;
-<li>
-assuming that worked OK, run the command <tt>make ntl.a</tt>;
-<li>
-if it crashes again, say on file <tt>bar.c</tt>,
-run the command <tt>make -f mf2 bar.o</tt>;
-<li>
-run the command <tt>make ntl.a</tt>, repeating steps 4 and 5 as necessary.
-</ol>
-
+<h2>
+<a name="abi">
+32-bit and 64-bit ABIs
+</a>
+</h2>
 <p>
 
-If you have build problems such as this,
-it would be quite useful to other NTL users if you
-could experiment with the code a bit,
-and try to find an equivalent way to write the problem code so that
-the compiler does not crash.
-I will then try to get these work-arounds into future NTL releases.
 
+An ABI (Application Binary Interface) defines the sizes of various 
+<tt>C</tt> data types.
+Typically, with a 32-bit ABI, int's and long's are 32 bits,
+while on a 64-bit ABI, int's are 32 bits and long's are 64 bits.
+Some platforms 
+support both 64-bit and 32-bit ABI's;
+typically in such settings, the 64-bit ABI will yield much better
+performance, while the 32-bit ABI is available for backward compatibility.
+In addition, the 64-bit ABI may <i>not</i> be the default:
+if you are using <tt>gcc</tt>, you need to pass the <tt>-m64</tt>
+flag to the compiler to get the 64-bit ABI.
+
+<p>
+When compiling NTL, you may want to try running <tt>configure</tt>
+with <tt>CFLAGS="-O2 -m64"</tt> to force a 64-bit ABI -- this 
+may yield a very marked performance improvement.
+
+<p>
+If you are using NTL with either the GMP or <tt>gf2x</tt> libraries,
+then these must be built with the same ABI as NTL.
+The installation script for GMP will typically select the 64-bit ABI
+automatically if it is available.
+The installation script for <tt>gf2x</tt> may need some hints.
+
+<p>
+When compiling programs that use NTL, you must also ensure that
+the program is compiled with the same ABI as NTL.
+Again, if you want a 64-bit ABI, then just pass the flag <tt>-m64</tt>
+to the compiler.
+
+
+
+
+
+<p> <p>
 <p> <p>
 
 <center>
-<a href="tour-stdcxx.html"><img src="arrow1.gif" alt="[Previous]" align=bottom></a>
+<a href="tour-modules.html"><img src="arrow1.gif" alt="[Previous]" align=bottom></a>
  <a href="tour.html"><img src="arrow2.gif" alt="[Up]" align=bottom></a> 
 <a href="tour-win.html"> <img src="arrow3.gif" alt="[Next]" align=bottom></a>
 </center>

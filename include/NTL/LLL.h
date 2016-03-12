@@ -10,9 +10,12 @@ long LLL(ZZ& det, mat_ZZ& B, long verbose = 0);
 long LLL(ZZ& det, mat_ZZ& B, mat_ZZ& U, long verbose = 0);
 
 long LLL(ZZ& det, mat_ZZ& B, long a, long b, long verbose = 0);
-long LLL(ZZ& det, mat_ZZ& B, mat_ZZ& U, long a, long b, 
-         long verbose = 0);
+long LLL(ZZ& det, mat_ZZ& B, mat_ZZ& U, long a, long b, long verbose = 0);
 
+long LLL_plus(vec_ZZ& D, mat_ZZ& B, mat_ZZ& U, long verbose=0);
+long LLL_plus(vec_ZZ& D, mat_ZZ& B, long verbose=0);
+long LLL_plus(vec_ZZ& D, mat_ZZ& B, mat_ZZ& U, long a, long b, long verbose=0);
+long LLL_plus(vec_ZZ& D, mat_ZZ& B, long a, long b, long verbose=0);
 
 long image(ZZ& det, mat_ZZ& B, long verbose = 0);
 long image(ZZ& det, mat_ZZ& B, mat_ZZ& U, long verbose = 0);
@@ -23,8 +26,8 @@ long LatticeSolve(vec_ZZ& x, const mat_ZZ& A, const vec_ZZ& y, long reduce=0);
 
 typedef long (*LLLCheckFct)(const vec_ZZ&); 
 
-extern double LLLStatusInterval;
-extern char *LLLDumpFile;
+extern NTL_CHEAP_THREAD_LOCAL double LLLStatusInterval;
+extern NTL_CHEAP_THREAD_LOCAL char *LLLDumpFile;
 
 
 // classical Gramm-Schmidt versions

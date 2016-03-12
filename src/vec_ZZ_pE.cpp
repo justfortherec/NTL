@@ -1,16 +1,8 @@
 
 #include <NTL/vec_ZZ_pE.h>
 
-#include <NTL/new.h>
 
 NTL_START_IMPL
-
-NTL_vector_impl(ZZ_pE,vec_ZZ_pE)
-
-NTL_io_vector_impl(ZZ_pE,vec_ZZ_pE)
-
-NTL_eq_vector_impl(ZZ_pE,vec_ZZ_pE)
-
 
 void InnerProduct(ZZ_pE& x, const vec_ZZ_pE& a, const vec_ZZ_pE& b)
 {
@@ -30,6 +22,9 @@ void InnerProduct(ZZ_pE& x, const vec_ZZ_pE& a, const vec_ZZ_pE& b)
 void InnerProduct(ZZ_pE& x, const vec_ZZ_pE& a, const vec_ZZ_pE& b,
                   long offset)
 {
+   if (offset < 0) LogicError("InnerProduct: negative offset");
+   if (NTL_OVERFLOW(offset, 1, 0)) ResourceError("InnerProduct: offset too big");
+
    long n = min(a.length(), b.length()+offset);
    long i;
    ZZ_pX accum, t;
@@ -79,7 +74,7 @@ void mul(vec_ZZ_pE& x, const vec_ZZ_pE& a, long b_in)
 void add(vec_ZZ_pE& x, const vec_ZZ_pE& a, const vec_ZZ_pE& b)
 {
    long n = a.length();
-   if (b.length() != n) Error("vector add: dimension mismatch");
+   if (b.length() != n) LogicError("vector add: dimension mismatch");
 
    x.SetLength(n);
    long i;
@@ -90,7 +85,7 @@ void add(vec_ZZ_pE& x, const vec_ZZ_pE& a, const vec_ZZ_pE& b)
 void sub(vec_ZZ_pE& x, const vec_ZZ_pE& a, const vec_ZZ_pE& b)
 {
    long n = a.length();
-   if (b.length() != n) Error("vector sub: dimension mismatch");
+   if (b.length() != n) LogicError("vector sub: dimension mismatch");
 
    x.SetLength(n);
    long i;
@@ -163,8 +158,8 @@ ZZ_pE operator*(const vec_ZZ_pE& a, const vec_ZZ_pE& b)
 
 void VectorCopy(vec_ZZ_pE& x, const vec_ZZ_pE& a, long n)
 {
-   if (n < 0) Error("VectorCopy: negative length");
-   if (n >= (1L << (NTL_BITS_PER_LONG-4))) Error("overflow in VectorCopy");
+   if (n < 0) LogicError("VectorCopy: negative length");
+   if (NTL_OVERFLOW(n, 1, 0)) ResourceError("overflow in VectorCopy");
 
    long m = min(n, a.length());
 

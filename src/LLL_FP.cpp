@@ -8,6 +8,11 @@
 
 NTL_START_IMPL
 
+static inline 
+void CheckFinite(double *p)
+{
+   if (!IsFinite(p)) ResourceError("LLL_FP: numbers too big...use LLL_XD");
+}
 
 static double InnerProduct(double *a, double *b, long n)
 {
@@ -24,7 +29,8 @@ static double InnerProduct(double *a, double *b, long n)
 static void RowTransform(vec_ZZ& A, vec_ZZ& B, const ZZ& MU1)
 // x = x - y*MU
 {
-   static ZZ T, MU;
+   NTL_ZZRegister(T);
+   NTL_ZZRegister(MU);
    long k;
 
    long n = A.length();
@@ -58,10 +64,21 @@ static void RowTransform(vec_ZZ& A, vec_ZZ& B, const ZZ& MU1)
       long mu1;
       conv(mu1, MU);
 
-      for (i = 1; i <= n; i++) {
-         mul(T, B(i), mu1);
-         if (k > 0) LeftShift(T, T, k);
-         sub(A(i), A(i), T);
+      if (k > 0) {
+
+         for (i = 1; i <= n; i++) {
+            mul(T, B(i), mu1);
+            LeftShift(T, T, k);
+            sub(A(i), A(i), T);
+         }
+
+      }
+      else {
+
+         for (i = 1; i <= n; i++) {
+            MulSubFrom(A(i), B(i), mu1);
+         }
+
       }
    }
    else {
@@ -118,26 +135,37 @@ static void RowTransformFinish(vec_ZZ& A, double *a, long *in_a)
       }
       else {
          conv(a[i], A(i));
+         CheckFinite(&a[i]);
       }
    }
 }
 
 
 static void RowTransform(vec_ZZ& A, vec_ZZ& B, const ZZ& MU1, 
-                         double mu, double *a, double *b, long *in_a,
+                         double *a, double *b, long *in_a,
                          double& max_a, double max_b, long& in_float)
 // x = x - y*MU
 {
-   static ZZ T, MU;
+   NTL_ZZRegister(T);
+   NTL_ZZRegister(MU);
    long k;
+   double mu;
+
+   conv(mu, MU1);
+   CheckFinite(&mu);
 
    long n = A.length();
    long i;
 
    if (in_float) {
-      max_a += fabs(mu)*max_b;
-      if (max_a >= TR_BND) {
+      double mu_abs = fabs(mu);
+      if (mu_abs > 0 && max_b > 0 && (mu_abs >= TR_BND || max_b >= TR_BND)) {
          in_float = 0;
+      }
+      else {
+         max_a += mu_abs*max_b;
+         if (max_a >= TR_BND) 
+            in_float = 0;
       }
    }
 
@@ -245,8 +273,7 @@ static void RowTransform(vec_ZZ& A, vec_ZZ& B, const ZZ& MU1,
                   conv(A(i), a[i]);
                   in_a[i] = 0;
                }
-               mul(T, B(i), mu1);
-               sub(A(i), A(i), T);
+               MulSubFrom(A(i), B(i), mu1);
             }
          }
       }
@@ -268,7 +295,8 @@ static void RowTransform2(vec_ZZ& A, vec_ZZ& B, const ZZ& MU1)
 // x = x + y*MU
 
 {
-   static ZZ T, MU;
+   NTL_ZZRegister(T);
+   NTL_ZZRegister(MU);
    long k;
 
    long n = A.length();
@@ -396,21 +424,19 @@ void ComputeGS(mat_ZZ& B, double **B1, double **mu, double *b,
 #endif
 
    c[k] = b[k] - s;
-
 }
 
-static double red_fudge = 0;
-static long log_red = 0;
+NTL_CHEAP_THREAD_LOCAL double LLLStatusInterval = 900.0;
+NTL_CHEAP_THREAD_LOCAL char *LLLDumpFile = 0;
 
-static long verbose = 0;
+static NTL_CHEAP_THREAD_LOCAL double red_fudge = 0;
+static NTL_CHEAP_THREAD_LOCAL long log_red = 0;
+static NTL_CHEAP_THREAD_LOCAL long verbose = 0;
 
-double LLLStatusInterval = 900.0;
-char *LLLDumpFile = 0;
-
-static unsigned long NumSwaps = 0;
-static double RR_GS_time = 0;
-static double StartTime = 0;
-static double LastTime = 0;
+static NTL_CHEAP_THREAD_LOCAL unsigned long NumSwaps = 0;
+static NTL_CHEAP_THREAD_LOCAL double RR_GS_time = 0;
+static NTL_CHEAP_THREAD_LOCAL double StartTime = 0;
+static NTL_CHEAP_THREAD_LOCAL double LastTime = 0;
 
 
 
@@ -477,7 +503,7 @@ static void inc_red_fudge()
    cerr << "LLL_FP: warning--relaxing reduction (" << log_red << ")\n";
 
    if (log_red < 4)
-      Error("LLL_FP: too much loss of precision...stop!");
+      ResourceError("LLL_FP: too much loss of precision...stop!");
 }
 
 
@@ -512,9 +538,9 @@ static void RR_GS(mat_ZZ& B, double **B1, double **mu,
    cerr << "LLL_FP: RR refresh " << rr_st << "..." << k << "...";
    tt = GetTime();
 
-   if (rr_st > k) Error("LLL_FP: can not continue!!!");
+   if (rr_st > k) ResourceError("LLL_FP: can not continue!!!");
 
-   long old_p = RR::precision();
+   RRPush push;
    RR::SetPrecision(prec);
 
    long n = B.NumCols();
@@ -548,33 +574,31 @@ static void RR_GS(mat_ZZ& B, double **B1, double **mu,
       ComputeGS(B, rr_B1, rr_mu, rr_b, rr_c, i, bound, 1, rr_buf, bound2);
 
    for (i = rr_st; i <= k; i++)
-      for (j = 1; j <= n; j++) 
+      for (j = 1; j <= n; j++) {
          conv(B1[i][j], rr_B1(i,j));
+         CheckFinite(&B1[i][j]);
+      }
 
    for (i = rr_st; i <= k; i++)
       for (j = 1; j <= i-1; j++) {
          conv(mu[i][j], rr_mu(i,j));
-         if (!IsFinite(&mu[i][j])) 
-            Error("LLL_FP: numbers too big...use LLL_XD");
       }
 
    for (i = rr_st; i <= k; i++) {
       conv(b[i], rr_b(i));
-      if (!IsFinite(&b[i])) Error("LLL_FP: numbers too big...use LLL_XD");
+      CheckFinite(&b[i]);
    }
    
 
    for (i = rr_st; i <= k; i++) {
       conv(c[i], rr_c(i));
-      if (!IsFinite(&c[i])) Error("LLL_FP: numbers too big...use LLL_XD");
+      CheckFinite(&c[i]);
    }
 
    for (i = 1; i <= k-1; i++) {
       conv(buf[i], rr_buf[i]);
    }
 
-
-   RR::SetPrecision(old_p);
 
    tt = GetTime()-tt;
    RR_GS_time += tt;
@@ -668,17 +692,18 @@ long ll_LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
    for (i = k; i <= m+1; i++)
       st[i] = 1;
 
-   double *buf;
-   buf = NTL_NEW_OP double [m+1];
-   if (!buf) Error("out of memory in lll_LLL_FP");
+   UniqueArray<double> buf_store;
+   buf_store.SetLength(m+1);
+   double *buf = buf_store.get();
 
    vec_long in_vec_mem;
    in_vec_mem.SetLength(n+1);
    long *in_vec = in_vec_mem.elts();
 
-   double *max_b;
-   max_b = NTL_NEW_OP double [m+1];
-   if (!max_b) Error("out of memory in lll_LLL_FP");
+   UniqueArray<double> max_b_store;
+   max_b_store.SetLength(m+1);
+   double *max_b = max_b_store.get();
+
 
    for (i = 1; i <= m; i++)
       max_b[i] = max_abs(B1[i], n);
@@ -734,7 +759,7 @@ long ll_LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
 
       if (st[k] < st[k+1]) st[k+1] = st[k];
       ComputeGS(B, B1, mu, b, c, k, bound, st[k], buf);
-      if (!IsFinite(&c[k])) Error("LLL_FP: numbers too big...use LLL_XD");
+      CheckFinite(&c[k]);
       st[k] = k;
 
       if (swap_cnt > 200000) {
@@ -854,7 +879,7 @@ long ll_LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
    
                conv(MU, mu1);
 
-               RowTransform(B(k), B(j), MU, mu1, B1[k], B1[j], in_vec,
+               RowTransform(B(k), B(j), MU, B1[k], B1[j], in_vec,
                             max_b[k], max_b[j], in_float);
                if (U) RowTransform((*U)(k), (*U)(j), MU);
             }
@@ -865,11 +890,12 @@ long ll_LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
             RowTransformFinish(B(k), B1[k], in_vec);
             max_b[k] = max_abs(B1[k], n);
 
-   
-
             if (!did_rr_gs) {
                b[k] = InnerProduct(B1[k], B1[k], n);
+               CheckFinite(&b[k]);
+
                ComputeGS(B, B1, mu, b, c, k, bound, 1, buf);
+               CheckFinite(&c[k]);
             }
             else {
                RR_GS(B, B1, mu, b, c, buf, prec,
@@ -877,10 +903,6 @@ long ll_LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
                rr_st = k+1;
             }
 
-            if (!IsFinite(&b[k]))
-               Error("LLL_FP: numbers too big...use LLL_XD");
-            if (!IsFinite(&c[k]))
-               Error("LLL_FP: numbers too big...use LLL_XD");
             rst = k;
          }
       } while (Fc1 || start_over);
@@ -967,9 +989,6 @@ long ll_LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
    }
 
 
-   delete [] buf;
-   delete [] max_b;
-
    return m;
 }
 
@@ -994,47 +1013,33 @@ long LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
 
    if (U) ident(*U, m);
 
-   double **B1;  // approximates B
+   Unique2DArray<double> B1_store;
+   B1_store.SetDimsFrom1(m+1, n+1);
+   double **B1 = B1_store.get();  // approximates B
 
-   typedef double *doubleptr;
 
-   B1 = NTL_NEW_OP doubleptr[m+1];
-   if (!B1) Error("LLL_FP: out of memory");
+   Unique2DArray<double> mu_store;
+   mu_store.SetDimsFrom1(m+1, m+1);
+   double **mu = mu_store.get();
 
-   for (i = 1; i <= m; i++) {
-      B1[i] = NTL_NEW_OP double[n+1];
-      if (!B1[i]) Error("LLL_FP: out of memory");
-   }
+   UniqueArray<double> c_store;
+   c_store.SetLength(m+1);
+   double *c = c_store.get(); // squared lengths of Gramm-Schmidt basis vectors
 
-   double **mu;
-   mu = NTL_NEW_OP doubleptr[m+1];
-   if (!mu) Error("LLL_FP: out of memory");
-
-   for (i = 1; i <= m; i++) {
-      mu[i] = NTL_NEW_OP double[m+1];
-      if (!mu[i]) Error("LLL_FP: out of memory");
-   }
-
-   double *c; // squared lengths of Gramm-Schmidt basis vectors
-
-   c = NTL_NEW_OP double[m+1];
-   if (!c) Error("LLL_FP: out of memory");
-
-   double *b; // squared lengths of basis vectors
-
-   b = NTL_NEW_OP double[m+1];
-   if (!b) Error("LLL_FP: out of memory");
-
+   UniqueArray<double> b_store;
+   b_store.SetLength(m+1);
+   double *b = b_store.get(); // squared lengths of basis vectors
 
    for (i = 1; i <=m; i++)
-      for (j = 1; j <= n; j++) 
+      for (j = 1; j <= n; j++) {
          conv(B1[i][j], B(i, j));
+         CheckFinite(&B1[i][j]);
+      }
 
          
    for (i = 1; i <= m; i++) {
       b[i] = InnerProduct(B1[i], B1[i], n);
-      if (!IsFinite(&b[i])) 
-         Error("LLL_FP: numbers too big...use LLL_XD");
+      CheckFinite(&b[i]);
    }
 
    new_m = ll_LLL_FP(B, U, delta, deep, check, B1, mu, b, c, m, 1, quit);
@@ -1049,25 +1054,6 @@ long LLL_FP(mat_ZZ& B, mat_ZZ* U, double delta, long deep,
          if (U) swap((*U)(m+dep-i), (*U)(m-i));
       }
    }
-
-
-   // clean-up
-
-   for (i = 1; i <= m; i++) {
-      delete [] B1[i];
-   }
-
-   delete [] B1;
-
-   for (i = 1; i <= m; i++) {
-      delete [] mu[i];
-   }
-
-   delete [] mu;
-
-   delete [] c;
-
-   delete [] b;
 
    return m;
 }
@@ -1085,8 +1071,8 @@ long LLL_FP(mat_ZZ& B, double delta, long deep, LLLCheckFct check,
       LastTime = StartTime;
    }
 
-   if (delta < 0.50 || delta >= 1) Error("LLL_FP: bad delta");
-   if (deep < 0) Error("LLL_FP: bad deep");
+   if (delta < 0.50 || delta >= 1) LogicError("LLL_FP: bad delta");
+   if (deep < 0) LogicError("LLL_FP: bad deep");
    return LLL_FP(B, 0, delta, deep, check);
 }
 
@@ -1101,8 +1087,8 @@ long LLL_FP(mat_ZZ& B, mat_ZZ& U, double delta, long deep,
       LastTime = StartTime;
    }
 
-   if (delta < 0.50 || delta >= 1) Error("LLL_FP: bad delta");
-   if (deep < 0) Error("LLL_FP: bad deep");
+   if (delta < 0.50 || delta >= 1) LogicError("LLL_FP: bad delta");
+   if (deep < 0) LogicError("LLL_FP: bad deep");
    return LLL_FP(B, &U, delta, deep, check);
 }
 
@@ -1183,8 +1169,9 @@ void ComputeBKZThresh(double *c, long beta)
 }
 
 static 
-void BKZStatus(double tt, double enum_time, long NumIterations, 
-               long NumTrivial, long NumNonTrivial, long NumNoOps, long m, 
+void BKZStatus(double tt, double enum_time, unsigned long NumIterations, 
+               unsigned long NumTrivial, unsigned long NumNonTrivial, 
+               unsigned long NumNoOps, long m, 
                const mat_ZZ& B)
 {
    cerr << "---- BKZ_FP status ----\n";
@@ -1262,69 +1249,54 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
 
    B.SetDims(m+1, n);
 
-
-   double **B1;  // approximates B
-
-   typedef double *doubleptr;
-
-   B1 = NTL_NEW_OP doubleptr[m+2];
-   if (!B1) Error("BKZ_FP: out of memory");
-
-   for (i = 1; i <= m+1; i++) {
-      B1[i] = NTL_NEW_OP double[n+1];
-      if (!B1[i]) Error("BKZ_FP: out of memory");
-   }
-
-   double **mu;
-   mu = NTL_NEW_OP doubleptr[m+2];
-   if (!mu) Error("LLL_FP: out of memory");
-
-   for (i = 1; i <= m+1; i++) {
-      mu[i] = NTL_NEW_OP double[m+1];
-      if (!mu[i]) Error("BKZ_FP: out of memory");
-   }
+   Unique2DArray<double> B1_store;
+   B1_store.SetDimsFrom1(m+2, n+1);
+   double **B1 = B1_store.get();  // approximates B
 
 
-   double *c; // squared lengths of Gramm-Schmidt basis vectors
+   Unique2DArray<double> mu_store;
+   mu_store.SetDimsFrom1(m+2, m+1);
+   double **mu = mu_store.get();
 
-   c = NTL_NEW_OP double[m+2];
-   if (!c) Error("BKZ_FP: out of memory");
+   UniqueArray<double> c_store;
+   c_store.SetLength(m+2);
+   double *c = c_store.get(); // squared lengths of Gramm-Schmidt basis vectors
 
-   double *b; // squared lengths of basis vectors
-
-   b = NTL_NEW_OP double[m+2];
-   if (!b) Error("BKZ_FP: out of memory");
+   UniqueArray<double> b_store;
+   b_store.SetLength(m+2);
+   double *b = b_store.get(); // squared lengths of basis vectors
 
    double cbar;
 
-   double *ctilda;
-   ctilda = NTL_NEW_OP double[m+2];
-   if (!ctilda) Error("BKZ_FP: out of memory");
 
-   double *vvec;
-   vvec = NTL_NEW_OP double[m+2];
-   if (!vvec) Error("BKZ_FP: out of memory");
-
-   double *yvec;
-   yvec = NTL_NEW_OP double[m+2];
-   if (!yvec) Error("BKZ_FP: out of memory");
-
-   double *uvec;
-   uvec = NTL_NEW_OP double[m+2];
-   if (!uvec) Error("BKZ_FP: out of memory");
-
-   double *utildavec;
-   utildavec = NTL_NEW_OP double[m+2];
-   if (!utildavec) Error("BKZ_FP: out of memory");
+   UniqueArray<double> ctilda_store;
+   ctilda_store.SetLength(m+2);
+   double *ctilda = ctilda_store.get();
 
 
-   long *Deltavec;
-   Deltavec = NTL_NEW_OP long[m+2];
-   if (!Deltavec) Error("BKZ_FP: out of memory");
+   UniqueArray<double> vvec_store;
+   vvec_store.SetLength(m+2);
+   double *vvec = vvec_store.get();
 
-   long *deltavec;
-   deltavec = NTL_NEW_OP long[m+2];
-   if (!deltavec) Error("BKZ_FP: out of memory");
+   UniqueArray<double> yvec_store;
+   yvec_store.SetLength(m+2);
+   double *yvec = yvec_store.get();
+
+   UniqueArray<double> uvec_store;
+   uvec_store.SetLength(m+2);
+   double *uvec = uvec_store.get();
+
+   UniqueArray<double> utildavec_store;
+   utildavec_store.SetLength(m+2);
+   double *utildavec = utildavec_store.get();
+
+   UniqueArray<long> Deltavec_store;
+   Deltavec_store.SetLength(m+2);
+   long *Deltavec = Deltavec_store.get();
+
+   UniqueArray<long> deltavec_store;
+   deltavec_store.SetLength(m+2);
+   long *deltavec = deltavec_store.get();;
 
    mat_ZZ Ulocal;
    mat_ZZ *U;
@@ -1347,14 +1319,15 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
 
 
    for (i = 1; i <=m; i++)
-      for (j = 1; j <= n; j++) 
+      for (j = 1; j <= n; j++) {
          conv(B1[i][j], B(i, j));
+         CheckFinite(&B1[i][j]);
+      }
 
          
    for (i = 1; i <= m; i++) {
       b[i] = InnerProduct(B1[i], B1[i], n);
-      if (!IsFinite(&b[i])) 
-         Error("BKZ_FD: numbers too big...use BKZ_XD");
+      CheckFinite(&b[i]);
    }
 
 
@@ -1364,10 +1337,10 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
    double tt;
 
    double enum_time = 0;
-   long NumIterations = 0;
-   long NumTrivial = 0;
-   long NumNonTrivial = 0;
-   long NumNoOps = 0;
+   unsigned long NumIterations = 0;
+   unsigned long NumTrivial = 0;
+   unsigned long NumNonTrivial = 0;
+   unsigned long NumNoOps = 0;
 
    long verb = verbose;
 
@@ -1460,6 +1433,8 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
 
             ctilda[t] = ctilda[t+1] + 
                (yvec[t]+utildavec[t])*(yvec[t]+utildavec[t])*c[t];
+
+            ForceToMem(&ctilda[t]);  // prevents an infinite loop
    
             if (prune > 0 && t > jj) {
                eta = BKZThresh(t-jj);
@@ -1528,7 +1503,7 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
                }
             }
    
-            if (s == 0) Error("BKZ_FP: internal error");
+            if (s == 0) LogicError("BKZ_FP: internal error");
    
             if (s > 0) {
                // special case
@@ -1546,7 +1521,7 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
                // cerr << "special case\n";
                new_m = ll_LLL_FP(B, U, delta, 0, check, 
                                 B1, mu, b, c, h, jj, quit);
-               if (new_m != h) Error("BKZ_FP: internal error");
+               if (new_m != h) LogicError("BKZ_FP: internal error");
                if (quit) break;
             }
             else {
@@ -1576,19 +1551,22 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
                   t1 = b[i-1]; b[i-1] = b[i]; b[i] = t1;
                }
       
-               for (i = 1; i <= n; i++)
+               for (i = 1; i <= n; i++) {
                   conv(B1[jj][i], B(jj, i));
+                  CheckFinite(&B1[jj][i]);
+               }
       
                b[jj] = InnerProduct(B1[jj], B1[jj], n);
+               CheckFinite(&b[jj]);
       
-               if (b[jj] == 0) Error("BKZ_FP: internal error"); 
+               if (b[jj] == 0) LogicError("BKZ_FP: internal error"); 
       
                // remove linear dependencies
    
                // cerr << "general case\n";
                new_m = ll_LLL_FP(B, U, delta, 0, 0, B1, mu, b, c, kk+1, jj, quit);
               
-               if (new_m != kk) Error("BKZ_FP: internal error"); 
+               if (new_m != kk) LogicError("BKZ_FP: internal error"); 
 
                // remove zero vector
       
@@ -1617,7 +1595,7 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
                   new_m = ll_LLL_FP(B, U, delta, 0, check, 
                                    B1, mu, b, c, h, h, quit);
    
-                  if (new_m != h) Error("BKZ_FP: internal error");
+                  if (new_m != h) LogicError("BKZ_FP: internal error");
                   if (quit) break;
                }
             }
@@ -1633,7 +1611,7 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
             if (!clean) {
                new_m = 
                   ll_LLL_FP(B, U, delta, 0, check, B1, mu, b, c, h, h, quit);
-               if (new_m != h) Error("BKZ_FP: internal error");
+               if (new_m != h) LogicError("BKZ_FP: internal error");
                if (quit) break;
             }
    
@@ -1673,28 +1651,6 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ* UU, double delta,
       *UU = *U;
    }
 
-   for (i = 1; i <= m+1; i++) {
-      delete [] B1[i];
-   }
-
-   delete [] B1;
-
-   for (i = 1; i <= m+1; i++) {
-      delete [] mu[i];
-   }
-
-   delete [] mu;
-
-   delete [] c;
-   delete [] b;
-   delete [] ctilda;
-   delete [] vvec;
-   delete [] yvec;
-   delete [] uvec;
-   delete [] utildavec;
-   delete [] Deltavec;
-   delete [] deltavec;
-
    return m;
 }
 
@@ -1709,8 +1665,8 @@ long BKZ_FP(mat_ZZ& BB, mat_ZZ& UU, double delta,
       LastTime = StartTime;
    }
 
-   if (delta < 0.50 || delta >= 1) Error("BKZ_FP: bad delta");
-   if (beta < 2) Error("BKZ_FP: bad block size");
+   if (delta < 0.50 || delta >= 1) LogicError("BKZ_FP: bad delta");
+   if (beta < 2) LogicError("BKZ_FP: bad block size");
 
    return BKZ_FP(BB, &UU, delta, beta, prune, check);
 }
@@ -1726,8 +1682,8 @@ long BKZ_FP(mat_ZZ& BB, double delta,
       LastTime = StartTime;
    }
 
-   if (delta < 0.50 || delta >= 1) Error("BKZ_FP: bad delta");
-   if (beta < 2) Error("BKZ_FP: bad block size");
+   if (delta < 0.50 || delta >= 1) LogicError("BKZ_FP: bad delta");
+   if (beta < 2) LogicError("BKZ_FP: bad block size");
 
    return BKZ_FP(BB, 0, delta, beta, prune, check);
 }

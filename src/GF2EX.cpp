@@ -2,6 +2,7 @@
 
 #include <NTL/GF2EX.h>
 #include <NTL/vec_vec_GF2.h>
+#include <NTL/ZZX.h>
 
 #include <NTL/new.h>
 
@@ -11,7 +12,7 @@ NTL_START_IMPL
 
 const GF2EX& GF2EX::zero()
 {
-   static GF2EX z;
+   NTL_THREAD_LOCAL static GF2EX z;
    return z;
 }
 
@@ -19,7 +20,7 @@ const GF2EX& GF2EX::zero()
 
 istream& operator>>(istream& s, GF2EX& x)
 {
-   s >> x.rep;
+   NTL_INPUT_CHECK_RET(s, s >> x.rep);
    x.normalize();
    return s;
 }
@@ -37,9 +38,8 @@ void GF2EX::normalize()
 
    n = rep.length();
    if (n == 0) return;
-   p = rep.elts() + (n-1);
-   while (n > 0 && IsZero(*p)) {
-      p--; 
+   p = rep.elts() + n;
+   while (n > 0 && IsZero(*--p)) {
       n--;
    }
    rep.SetLength(n);
@@ -70,21 +70,29 @@ void SetCoeff(GF2EX& x, long i, const GF2E& a)
    long j, m;
 
    if (i < 0) 
-      Error("SetCoeff: negative index");
+      LogicError("SetCoeff: negative index");
 
-   if (i >= (1L << (NTL_BITS_PER_LONG-4)))
-      Error("overflow in SetCoeff");
+   if (NTL_OVERFLOW(i, 1, 0))
+      LogicError("overflow in SetCoeff");
 
    m = deg(x);
 
-   if (i > m) {
-      long pos = x.rep.position(a);
-      x.rep.SetLength(i+1);
+   if (i > m && IsZero(a)) return; 
 
-      if (pos != -1)
-         x.rep[i] = x.rep.RawGet(pos);
-      else
+   if (i > m) {
+      /* careful: a may alias a coefficient of x */
+
+      long alloc = x.rep.allocated();
+
+      if (alloc > 0 && i >= alloc) {
+         GF2E aa = a;
+         x.rep.SetLength(i+1);
+         x.rep[i] = aa;
+      }
+      else {
+         x.rep.SetLength(i+1);
          x.rep[i] = a;
+      }
 
       for (j = m+1; j < i; j++)
          clear(x.rep[j]);
@@ -98,7 +106,7 @@ void SetCoeff(GF2EX& x, long i, const GF2E& a)
 void SetCoeff(GF2EX& x, long i, GF2 a)
 {
    if (i < 0)
-      Error("SetCoeff: negative index");
+      LogicError("SetCoeff: negative index");
 
    if (a == 1)
       SetCoeff(x, i);
@@ -109,7 +117,7 @@ void SetCoeff(GF2EX& x, long i, GF2 a)
 void SetCoeff(GF2EX& x, long i, long a)
 {
    if (i < 0)
-      Error("SetCoeff: negative index");
+      LogicError("SetCoeff: negative index");
 
    if ((a & 1) == 1)
       SetCoeff(x, i);
@@ -122,10 +130,10 @@ void SetCoeff(GF2EX& x, long i)
    long j, m;
 
    if (i < 0) 
-      Error("coefficient index out of range");
+      LogicError("coefficient index out of range");
 
-   if (i >= (1L << (NTL_BITS_PER_LONG-4)))
-      Error("overflow in SetCoeff");
+   if (NTL_OVERFLOW(i, 1, 0))
+      ResourceError("overflow in SetCoeff");
 
    m = deg(x);
 
@@ -231,6 +239,27 @@ void conv(GF2EX& x, const vec_GF2E& a)
    x.rep = a;
    x.normalize();
 }
+
+
+
+/* additional legacy conversions for v6 conversion regime */
+
+void conv(GF2EX& x, const ZZX& a)
+{
+   long n = a.rep.length();
+   long i;
+
+   x.rep.SetLength(n);
+   for (i = 0; i < n; i++)
+      conv(x.rep[i], a.rep[i]);
+
+   x.normalize();
+}
+
+
+/* ------------------------------------- */
+
+
 
 
 void add(GF2EX& x, const GF2EX& a, const GF2EX& b)
@@ -380,7 +409,7 @@ void sqr(GF2EX& x, const GF2EX& a)
       return;
    }
 
-   x.rep.SetLength(2*(da+1));
+   x.rep.SetLength(2*da+1);
    long i;
 
    for (i = da; i > 0; i--) {
@@ -394,33 +423,9 @@ void sqr(GF2EX& x, const GF2EX& a)
 }
 
 
-#if 0
 
-static
-void PlainMul(GF2X *xp, const GF2X *ap, long sa, const GF2X *bp, long sb)
-{
-   if (sa == 0 || sb == 0) return;
-
-   long sx = sa+sb-1;
-
-   long i, j, jmin, jmax;
-   static GF2X t, accum;
-
-   for (i = 0; i < sx; i++) {
-      jmin = max(0, i-sb+1);
-      jmax = min(sa-1, i);
-      clear(accum);
-      for (j = jmin; j <= jmax; j++) {
-         mul(t, ap[j], bp[i-j]);
-         add(accum, accum, t);
-      }
-      xp[i] = accum;
-   }
-}
-
-#endif
-
-static void PlainMul1(GF2X *xp, const GF2X *ap, long sa, const GF2X& b)
+static 
+void PlainMul1(GF2X *xp, const GF2X *ap, long sa, const GF2X& b)
 {
    long i;
 
@@ -431,10 +436,10 @@ static void PlainMul1(GF2X *xp, const GF2X *ap, long sa, const GF2X& b)
 
 
 
-inline
+static inline
 void q_add(GF2X& x, const GF2X& a, const GF2X& b)
 
-// This is a quick-and-dirty add rotine used by the karatsuba routine.
+// This is a quick-and-dirty add routine used by the karatsuba routine.
 // It assumes that the output already has enough space allocated,
 // thus avoiding any procedure calls.
 // WARNING: it also accesses the underlying WordVector representation
@@ -480,7 +485,7 @@ void q_add(GF2X& x, const GF2X& a, const GF2X& b)
 }
 
 
-inline
+static inline
 void q_copy(GF2X& x, const GF2X& a)
 // see comments for q_add above
 
@@ -649,7 +654,7 @@ void ExtractBits(_ntl_ulong *cp, const _ntl_ulong *ap, long k, long n)
       for (i = 0; i < sc-1; i++)
          cp[i] = (ap[i+wn] >> bn) | (ap[i+wn+1] << (NTL_BITS_PER_LONG - bn));
 
-      if ((k + n) % NTL_BITS_PER_LONG != 0)
+      if (k > sc*NTL_BITS_PER_LONG - bn) 
          cp[sc-1] = (ap[sc+wn-1] >> bn)|(ap[sc+wn] << (NTL_BITS_PER_LONG - bn));
       else
          cp[sc-1] = ap[sc+wn-1] >> bn;
@@ -699,8 +704,8 @@ void KronMul(GF2EX& x, const GF2EX& a, const GF2EX& b)
    long sx = deg(a) + deg(b) + 1;
    long blocksz = 2*GF2E::degree() - 1;
 
-   if (blocksz >= (1L << (NTL_BITS_PER_LONG-4))/sx)
-      Error("overflow in GF2EX KronMul");
+   if (NTL_OVERFLOW(blocksz, sx, 0))
+      ResourceError("overflow in GF2EX KronMul");
 
    KronSubst(aa, a);
    KronSubst(bb, b);
@@ -834,7 +839,7 @@ void PlainDivRem(GF2EX& q, GF2EX& r, const GF2EX& a, const GF2EX& b)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) Error("GF2EX: division by zero");
+   if (db < 0) ArithmeticError("GF2EX: division by zero");
 
    if (da < db) {
       r = a;
@@ -901,7 +906,7 @@ void PlainRem(GF2EX& r, const GF2EX& a, const GF2EX& b, GF2XVec& x)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) Error("GF2EX: division by zero");
+   if (db < 0) ArithmeticError("GF2EX: division by zero");
 
    if (da < db) {
       r = a;
@@ -956,7 +961,7 @@ void PlainDivRem(GF2EX& q, GF2EX& r, const GF2EX& a, const GF2EX& b, GF2XVec& x)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) Error("GF2EX: division by zero");
+   if (db < 0) ArithmeticError("GF2EX: division by zero");
 
    if (da < db) {
       r = a;
@@ -1022,7 +1027,7 @@ void PlainDiv(GF2EX& q, const GF2EX& a, const GF2EX& b)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) Error("GF2EX: division by zero");
+   if (db < 0) ArithmeticError("GF2EX: division by zero");
 
    if (da < db) {
       clear(q);
@@ -1084,7 +1089,7 @@ void PlainRem(GF2EX& r, const GF2EX& a, const GF2EX& b)
    da = deg(a);
    db = deg(b);
 
-   if (db < 0) Error("GF2EX: division by zero");
+   if (db < 0) ArithmeticError("GF2EX: division by zero");
 
    if (da < db) {
       r = a;
@@ -1268,7 +1273,7 @@ void XGCD(GF2EX& d, GF2EX& s, GF2EX& t, const GF2EX& a, const GF2EX& b)
 void MulMod(GF2EX& x, const GF2EX& a, const GF2EX& b, const GF2EX& f)
 {
    if (deg(a) >= deg(f) || deg(b) >= deg(f) || deg(f) == 0) 
-      Error("MulMod: bad args");
+      LogicError("MulMod: bad args");
 
    GF2EX t;
 
@@ -1278,7 +1283,7 @@ void MulMod(GF2EX& x, const GF2EX& a, const GF2EX& b, const GF2EX& f)
 
 void SqrMod(GF2EX& x, const GF2EX& a, const GF2EX& f)
 {
-   if (deg(a) >= deg(f) || deg(f) == 0) Error("SqrMod: bad args");
+   if (deg(a) >= deg(f) || deg(f) == 0) LogicError("SqrMod: bad args");
 
    GF2EX t;
 
@@ -1289,18 +1294,20 @@ void SqrMod(GF2EX& x, const GF2EX& a, const GF2EX& f)
 
 void InvMod(GF2EX& x, const GF2EX& a, const GF2EX& f)
 {
-   if (deg(a) >= deg(f) || deg(f) == 0) Error("InvMod: bad args");
+   if (deg(a) >= deg(f) || deg(f) == 0) LogicError("InvMod: bad args");
 
-   GF2EX d, t;
+   GF2EX d, xx, t;
 
-   XGCD(d, x, t, a, f);
+   XGCD(d, xx, t, a, f);
    if (!IsOne(d))
-      Error("GF2EX InvMod: can't compute multiplicative inverse");
+      InvModError("GF2EX InvMod: can't compute multiplicative inverse");
+
+   x = xx;
 }
 
 long InvModStatus(GF2EX& x, const GF2EX& a, const GF2EX& f)
 {
-   if (deg(a) >= deg(f) || deg(f) == 0) Error("InvModStatus: bad args");
+   if (deg(a) >= deg(f) || deg(f) == 0) LogicError("InvModStatus: bad args");
 
    GF2EX d, t;
 
@@ -1328,7 +1335,7 @@ void MulByXModAux(GF2EX& h, const GF2EX& a, const GF2EX& f)
    n = deg(f);
    m = deg(a);
 
-   if (m >= n || n == 0) Error("MulByXMod: bad args");
+   if (m >= n || n == 0) LogicError("MulByXMod: bad args");
 
    if (m < 0) {
       clear(h);
@@ -1421,7 +1428,7 @@ void trunc(GF2EX& x, const GF2EX& a, long m)
 // x = a % X^m, output may alias input 
 
 {
-   if (m < 0) Error("trunc: bad args");
+   if (m < 0) LogicError("trunc: bad args");
 
    if (&x == &a) {
       if (x.rep.length() > m) {
@@ -1458,7 +1465,7 @@ void NewtonInvTrunc(GF2EX& c, const GF2EX& a, long e)
       return;
    }
 
-   static vec_long E;
+   vec_long E;
    E.SetLength(0);
    append(E, e);
    while (e > 1) {
@@ -1471,10 +1478,10 @@ void NewtonInvTrunc(GF2EX& c, const GF2EX& a, long e)
    GF2EX g, g0, g1, g2;
 
 
-   g.rep.SetMaxLength(e);
-   g0.rep.SetMaxLength(e);
-   g1.rep.SetMaxLength((3*e+1)/2);
-   g2.rep.SetMaxLength(e);
+   g.rep.SetMaxLength(E[0]);
+   g0.rep.SetMaxLength(E[0]);
+   g1.rep.SetMaxLength((3*E[0]+1)/2);
+   g2.rep.SetMaxLength(E[0]);
 
    conv(g, x);
 
@@ -1505,14 +1512,14 @@ void NewtonInvTrunc(GF2EX& c, const GF2EX& a, long e)
 
 void InvTrunc(GF2EX& c, const GF2EX& a, long e)
 {
-   if (e < 0) Error("InvTrunc: bad args");
+   if (e < 0) LogicError("InvTrunc: bad args");
    if (e == 0) {
       clear(c);
       return;
    }
 
-   if (e >= (1L << (NTL_BITS_PER_LONG-4)))
-      Error("overflow in InvTrunc");
+   if (NTL_OVERFLOW(e, 1, 0))
+      ResourceError("overflow in InvTrunc");
 
    NewtonInvTrunc(c, a, e);
 }
@@ -1526,12 +1533,12 @@ void build(GF2EXModulus& F, const GF2EX& f)
 {
    long n = deg(f);
 
-   if (n <= 0) Error("build(GF2EXModulus,GF2EX): deg(f) <= 0");
+   if (n <= 0) LogicError("build(GF2EXModulus,GF2EX): deg(f) <= 0");
 
-   if (n >= (1L << (NTL_BITS_PER_LONG-4))/GF2E::degree())
-      Error("build(GF2EXModulus,GF2EX): overflow");
+   if (NTL_OVERFLOW(n, GF2E::degree(), 0))
+      ResourceError("build(GF2EXModulus,GF2EX): overflow");
 
-   F.tracevec.SetLength(0);
+   F.tracevec.make();
 
    F.f = f;
    F.n = n;
@@ -1782,7 +1789,7 @@ void div(GF2EX& q, const GF2EX& a, const GF2EXModulus& F)
 
 void MulMod(GF2EX& c, const GF2EX& a, const GF2EX& b, const GF2EXModulus& F)
 {
-   if (deg(a) >= F.n || deg(b) >= F.n) Error("MulMod: bad args");
+   if (deg(a) >= F.n || deg(b) >= F.n) LogicError("MulMod: bad args");
 
    GF2EX t;
    mul(t, a, b);
@@ -1792,7 +1799,7 @@ void MulMod(GF2EX& c, const GF2EX& a, const GF2EX& b, const GF2EXModulus& F)
 
 void SqrMod(GF2EX& c, const GF2EX& a, const GF2EXModulus& F)
 {
-   if (deg(a) >= F.n) Error("MulMod: bad args");
+   if (deg(a) >= F.n) LogicError("MulMod: bad args");
 
    GF2EX t;
    sqr(t, a);
@@ -1828,7 +1835,7 @@ long OptWinSize(long n)
 void PowerMod(GF2EX& h, const GF2EX& g, const ZZ& e, const GF2EXModulus& F)
 // h = g^e mod f using "sliding window" algorithm
 {
-   if (deg(g) >= F.n) Error("PowerMod: bad args");
+   if (deg(g) >= F.n) LogicError("PowerMod: bad args");
 
    if (e == 0) {
       set(h);
@@ -1941,7 +1948,7 @@ void PowerMod(GF2EX& h, const GF2EX& g, const ZZ& e, const GF2EXModulus& F)
 
 void PowerXMod(GF2EX& hh, const ZZ& e, const GF2EXModulus& F)
 {
-   if (F.n < 0) Error("PowerXMod: uninitialized modulus");
+   if (F.n < 0) LogicError("PowerXMod: uninitialized modulus");
 
    if (IsZero(e)) {
       set(hh);
@@ -2078,7 +2085,7 @@ void div(GF2EX& q, const GF2EX& a, const GF2E& b)
 void div(GF2EX& q, const GF2EX& a, GF2 b)
 {
    if (b == 0)
-      Error("div: division by zero");
+      ArithmeticError("div: division by zero");
 
    q = a;
 }
@@ -2086,7 +2093,7 @@ void div(GF2EX& q, const GF2EX& a, GF2 b)
 void div(GF2EX& q, const GF2EX& a, long b)
 {
    if ((b & 1) == 0)
-      Error("div: division by zero");
+      ArithmeticError("div: division by zero");
 
    q = a;
 }
@@ -2139,8 +2146,13 @@ void diff(GF2EX& x, const GF2EX& a)
 
 void RightShift(GF2EX& x, const GF2EX& a, long n)
 {
+   if (IsZero(a)) {
+      clear(x);
+      return;
+   }
+
    if (n < 0) {
-      if (n < -NTL_MAX_LONG) Error("overflow in RightShift");
+      if (n < -NTL_MAX_LONG) ResourceError("overflow in RightShift");
       LeftShift(x, a, -n);
       return;
    }
@@ -2167,19 +2179,21 @@ void RightShift(GF2EX& x, const GF2EX& a, long n)
 
 void LeftShift(GF2EX& x, const GF2EX& a, long n)
 {
-   if (n < 0) {
-      if (n < -NTL_MAX_LONG) Error("overflow in LeftShift");
-      RightShift(x, a, -n);
-      return;
-   }
-
-   if (n >= (1L << (NTL_BITS_PER_LONG-4)))
-      Error("overflow in LeftShift");
-
    if (IsZero(a)) {
       clear(x);
       return;
    }
+
+   if (n < 0) {
+      if (n < -NTL_MAX_LONG) 
+         clear(x);
+      else
+         RightShift(x, a, -n);
+      return;
+   }
+
+   if (NTL_OVERFLOW(n, 1, 0))
+      ResourceError("overflow in LeftShift");
 
    long m = a.rep.length();
 
@@ -2216,14 +2230,6 @@ void ShiftAdd(GF2EX& U, const GF2EX& V, long n)
 
    U.normalize();
 }
-
-NTL_vector_impl(GF2EX,vec_GF2EX)
-
-NTL_eq_vector_impl(GF2EX,vec_GF2EX)
-
-NTL_io_vector_impl(GF2EX,vec_GF2EX)
-
-
 
 
 void IterBuild(GF2E* a, long n)
@@ -2304,7 +2310,7 @@ void eval(vec_GF2E& b, const GF2EX& f, const vec_GF2E& a)
 void interpolate(GF2EX& f, const vec_GF2E& a, const vec_GF2E& b)
 {
    long m = a.length();
-   if (b.length() != m) Error("interpolate: vector length mismatch");
+   if (b.length() != m) LogicError("interpolate: vector length mismatch");
 
    if (m == 0) {
       clear(f);
@@ -2431,13 +2437,12 @@ void build(GF2EXArgument& A, const GF2EX& h, const GF2EXModulus& F, long m)
    long i;
 
    if (m <= 0 || deg(h) >= F.n)
-      Error("build GF2EXArgument: bad args");
+      LogicError("build GF2EXArgument: bad args");
 
    if (m > F.n) m = F.n;
 
    if (GF2EXArgBound > 0) {
-      double sz = GF2E::WordLength()+4;
-      sz = sz*(sizeof (_ntl_ulong));
+      double sz = GF2E::storage();
       sz = sz*F.n;
       sz = sz + NTL_VECTOR_HEADER_SIZE + sizeof(vec_GF2E);
       sz = sz/1024;
@@ -2456,6 +2461,7 @@ void build(GF2EXArgument& A, const GF2EX& h, const GF2EXModulus& F, long m)
 
 
 
+NTL_CHEAP_THREAD_LOCAL
 long GF2EXArgBound = 0;
 
 
@@ -2541,7 +2547,7 @@ void build(GF2EXTransMultiplier& B, const GF2EX& b, const GF2EXModulus& F)
 {
    long db = deg(b);
 
-   if (db >= F.n) Error("build TransMultiplier: bad args");
+   if (db >= F.n) LogicError("build TransMultiplier: bad args");
 
    GF2EX t;
 
@@ -2583,7 +2589,7 @@ void build(GF2EXTransMultiplier& B, const GF2EX& b, const GF2EXModulus& F)
 void TransMulMod(GF2EX& x, const GF2EX& a, const GF2EXTransMultiplier& B,
                const GF2EXModulus& F)
 {
-   if (deg(a) >= F.n) Error("TransMulMod: bad args");
+   if (deg(a) >= F.n) LogicError("TransMulMod: bad args");
 
    GF2EX t1, t2;
 
@@ -2617,8 +2623,11 @@ static
 void ProjectPowers(vec_GF2E& x, const GF2EX& a, long k, 
                    const GF2EXArgument& H, const GF2EXModulus& F)
 {
-   if (k < 0 || k >= (1L << (NTL_BITS_PER_LONG-4)) || deg(a) >= F.n) 
-      Error("ProjectPowers: bad args");
+   if (k < 0 || deg(a) >= F.n) 
+      LogicError("ProjectPowers: bad args");
+
+   if (NTL_OVERFLOW(k, 1, 0)) 
+      ResourceError("ProjectPowers: excessive args");
 
    long m = H.H.length()-1;
    long l = (k+m-1)/m - 1;
@@ -2647,7 +2656,7 @@ void ProjectPowers(vec_GF2E& x, const GF2EX& a, long k, const GF2EX& h,
                    const GF2EXModulus& F)
 {
    if (k < 0 || deg(a) >= F.n || deg(h) >= F.n)
-      Error("ProjectPowers: bad args");
+      LogicError("ProjectPowers: bad args");
 
    if (k == 0) {
       x.SetLength(0);;
@@ -2748,8 +2757,8 @@ void BerlekampMassey(GF2EX& h, const vec_GF2E& a, long m)
 
 void MinPolySeq(GF2EX& h, const vec_GF2E& a, long m)
 {
-   if (m < 0 || m >= (1L << (NTL_BITS_PER_LONG-4))) Error("MinPoly: bad args");
-   if (a.length() < 2*m) Error("MinPoly: sequence too short");
+   if (m < 0 || NTL_OVERFLOW(m, 1, 0)) LogicError("MinPoly: bad args");
+   if (a.length() < 2*m) LogicError("MinPoly: sequence too short");
 
    BerlekampMassey(h, a, m);
 }
@@ -2767,7 +2776,7 @@ void DoMinPolyMod(GF2EX& h, const GF2EX& g, const GF2EXModulus& F, long m,
 void ProbMinPolyMod(GF2EX& h, const GF2EX& g, const GF2EXModulus& F, long m)
 {
    long n = F.n;
-   if (m < 1 || m > n) Error("ProbMinPoly: bad args");
+   if (m < 1 || m > n) LogicError("ProbMinPoly: bad args");
 
    GF2EX R;
    random(R, n);
@@ -2784,7 +2793,7 @@ void MinPolyMod(GF2EX& hh, const GF2EX& g, const GF2EXModulus& F, long m)
 {
    GF2EX h, h1;
    long n = F.n;
-   if (m < 1 || m > n) Error("MinPoly: bad args");
+   if (m < 1 || m > n) LogicError("MinPoly: bad args");
 
    /* probabilistically compute min-poly */
 
@@ -2817,7 +2826,7 @@ void MinPolyMod(GF2EX& hh, const GF2EX& g, const GF2EXModulus& F, long m)
 
 void IrredPolyMod(GF2EX& h, const GF2EX& g, const GF2EXModulus& F, long m)
 {
-   if (m < 1 || m > F.n) Error("IrredPoly: bad args");
+   if (m < 1 || m > F.n) LogicError("IrredPoly: bad args");
 
    GF2EX R;
    set(R);
@@ -2916,7 +2925,7 @@ long operator==(const GF2EX& a, const GF2E& b)
 void power(GF2EX& x, const GF2EX& a, long e)
 {
    if (e < 0) {
-      Error("power: negative exponent");
+      ArithmeticError("power: negative exponent");
    }
 
    if (e == 0) {
@@ -2938,7 +2947,7 @@ void power(GF2EX& x, const GF2EX& a, long e)
 
 
    if (da > (NTL_MAX_LONG-1)/e)
-      Error("overflow in power");
+      ResourceError("overflow in power");
 
    GF2EX res;
    res.SetMaxLength(da*e + 1);
@@ -2958,8 +2967,8 @@ void power(GF2EX& x, const GF2EX& a, long e)
 
 void reverse(GF2EX& x, const GF2EX& a, long hi)
 {
-   if (hi < -1) Error("reverse: bad args");
-   if (hi >= (1L << (NTL_BITS_PER_LONG-4))) Error("overflow in reverse");
+   if (hi < 0) { clear(x); return; }
+   if (NTL_OVERFLOW(hi, 1, 0)) ResourceError("overflow in reverse");
 
    if (&x == &a) {
       GF2EX tmp;
@@ -2990,7 +2999,7 @@ void FastTraceVec(vec_GF2E& S, const GF2EXModulus& f)
 void PlainTraceVec(vec_GF2E& S, const GF2EX& ff)
 {
    if (deg(ff) <= 0)
-      Error("TraceVec: bad args");
+      LogicError("TraceVec: bad args");
 
    GF2EX f;
    f = ff;
@@ -3032,13 +3041,8 @@ void TraceVec(vec_GF2E& S, const GF2EX& f)
 }
 
 static
-void ComputeTraceVec(const GF2EXModulus& F)
+void ComputeTraceVec(vec_GF2E& S, const GF2EXModulus& F)
 {
-   vec_GF2E& S = *((vec_GF2E *) &F.tracevec);
-
-   if (S.length() > 0)
-      return;
-
    if (F.method == GF2EX_MOD_PLAIN) {
       PlainTraceVec(S, F.f);
    }
@@ -3052,18 +3056,24 @@ void TraceMod(GF2E& x, const GF2EX& a, const GF2EXModulus& F)
    long n = F.n;
 
    if (deg(a) >= n)
-      Error("trace: bad args");
+      LogicError("trace: bad args");
 
-   if (F.tracevec.length() == 0) 
-      ComputeTraceVec(F);
+   do { // NOTE: thread safe lazy init
+      Lazy<vec_GF2E>::Builder builder(F.tracevec.val());
+      if (!builder()) break;
+      UniquePtr<vec_GF2E> p;
+      p.make();
+      ComputeTraceVec(*p, F);
+      builder.move(p);
+   } while (0);
 
-   InnerProduct(x, a.rep, F.tracevec);
+   InnerProduct(x, a.rep, *F.tracevec.val());
 }
 
 void TraceMod(GF2E& x, const GF2EX& a, const GF2EX& f)
 {
    if (deg(a) >= deg(f) || deg(f) <= 0)
-      Error("trace: bad args");
+      LogicError("trace: bad args");
 
    project(x, TraceVec(f), a);
 }
@@ -3128,7 +3138,7 @@ void resultant(GF2E& rres, const GF2EX& a, const GF2EX& b)
 void NormMod(GF2E& x, const GF2EX& a, const GF2EX& f)
 {
    if (deg(f) <= 0 || deg(a) >= deg(f)) 
-      Error("norm: bad args");
+      LogicError("norm: bad args");
 
    if (IsZero(a)) {
       clear(x);
@@ -3242,7 +3252,7 @@ void PrepareProjection(vec_vec_GF2& tt, const vec_GF2E& s,
    }
 }
 
-void ProjectedInnerProduct(GF2& x, const vec_GF2E& a, 
+void ProjectedInnerProduct(ref_GF2 x, const vec_GF2E& a, 
                            const vec_vec_GF2& b)
 {
    long n = min(a.length(), b.length());
@@ -3266,7 +3276,7 @@ void PrecomputeProj(vec_GF2& proj, const GF2X& f)
 {
    long n = deg(f);
 
-   if (n <= 0) Error("PrecomputeProj: bad args");
+   if (n <= 0) LogicError("PrecomputeProj: bad args");
 
    if (ConstTerm(f) != 0) {
       proj.SetLength(1);
@@ -3286,7 +3296,7 @@ void ProjectPowersTower(vec_GF2& x, const vec_GF2E& a, long k,
 {
    long n = F.n;
 
-   if (a.length() > n || k < 0) Error("ProjectPowers: bad args");
+   if (a.length() > n || k < 0) LogicError("ProjectPowers: bad args");
 
    long m = H.H.length()-1;
    long l = (k+m-1)/m - 1;
@@ -3324,7 +3334,7 @@ void ProjectPowersTower(vec_GF2& x, const vec_GF2E& a, long k,
                    const vec_GF2& proj)
 
 {
-   if (a.length() > F.n || k < 0) Error("ProjectPowers: bad args");
+   if (a.length() > F.n || k < 0) LogicError("ProjectPowers: bad args");
 
    if (k == 0) {
       x.SetLength(0);
@@ -3355,7 +3365,7 @@ void ProbMinPolyTower(GF2X& h, const GF2EX& g, const GF2EXModulus& F,
                       long m)
 {
    long n = F.n;
-   if (m < 1 || m > n*GF2E::degree()) Error("ProbMinPoly: bad args");
+   if (m < 1 || m > n*GF2E::degree()) LogicError("ProbMinPoly: bad args");
 
    vec_GF2E R;
    R.SetLength(n);
@@ -3372,7 +3382,7 @@ void ProbMinPolyTower(GF2X& h, const GF2EX& g, const GF2EXModulus& F,
                       long m, const vec_GF2& proj)
 {
    long n = F.n;
-   if (m < 1 || m > n*GF2E::degree()) Error("ProbMinPoly: bad args");
+   if (m < 1 || m > n*GF2E::degree()) LogicError("ProbMinPoly: bad args");
 
    vec_GF2E R;
    R.SetLength(n);
@@ -3388,7 +3398,7 @@ void MinPolyTower(GF2X& hh, const GF2EX& g, const GF2EXModulus& F, long m)
    GF2EX h1;
    long n = F.n;
    if (m < 1 || m > n*GF2E::degree()) {
-      Error("MinPoly: bad args");
+      LogicError("MinPoly: bad args");
    }
 
    vec_GF2 proj;
@@ -3431,7 +3441,7 @@ void MinPolyTower(GF2X& hh, const GF2EX& g, const GF2EXModulus& F, long m)
 
 void IrredPolyTower(GF2X& h, const GF2EX& g, const GF2EXModulus& F, long m)
 {
-   if (m < 1 || m > deg(F)*GF2E::degree()) Error("IrredPoly: bad args");
+   if (m < 1 || m > deg(F)*GF2E::degree()) LogicError("IrredPoly: bad args");
 
    vec_GF2E R;
    R.SetLength(1);

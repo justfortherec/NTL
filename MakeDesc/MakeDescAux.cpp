@@ -1,37 +1,56 @@
 
-long f1(void)
+#include <cstdlib>
+using namespace std;
+
+int val_int(int x) { return x; }
+unsigned int val_uint(unsigned int x) { return x; }
+ 
+long val_long(long x) { return x; }
+unsigned long val_ulong(unsigned long x) { return x; }
+ 
+size_t val_size_t(size_t x) { return x; }
+
+double val_double(double x) { return x; }
+long double val_ldouble(double x) { return x; }
+ 
+void touch_int(int* x) {}
+void touch_uint(unsigned int* x) {}
+ 
+void touch_long(long* x) {}
+void touch_ulong(unsigned long* x) {}
+
+void touch_size_t(size_t* x) {}
+ 
+void touch_double(double* x) {}
+void touch_ldouble(long double* x) {}
+
+double sum_double(double *x, long n)
 {
-   return -1;
+   long i;
+   double acc = 0;
+
+   for (i = 0; i < n; i++)
+      acc += x[i];
+
+   return acc;
 }
 
-long f2(long bpl)
+double fma_test(double a, double b, double c)
 {
-   return (((long)1) << (bpl-1)) - 1;
+   double t1 = a*b;
+   double t2 = t1 + c;
+   return t2;
 }
 
-double f3(void)
+double power2(long k)
 {
-   return 1.75;
+   long i;
+   double res;
+
+   res = 1;
+
+   for (i = 1; i <= k; i++)
+      res = res * 2;
+
+   return res;
 }
-
-void f4(double *p)
-{ }
-
-void f5(int *p)
-{ }
-
-long f6(void)
-{
-   return 1;
-}
-
-long f7(void)
-{
-   return -2L;
-}
-
-long f8(void)
-{
-   return 0;
-}
-

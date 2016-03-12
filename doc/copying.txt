@@ -2,9 +2,9 @@
 COPYRIGHT NOTICE
 
 NTL -- A Library for Doing Number Theory
-Copyright (C) 1996, 1997, 1998, 1999, 2000  Victor Shoup
+Copyright (C) 1996-2016  Victor Shoup
 
-The most recent cersion of NTL is available at http://www.shoup.net
+The most recent version of NTL is available at http://www.shoup.net
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -38,7 +38,7 @@ Note that the traditional long integer package used by NTL, lip.c, is derived
 from---and represents an extensive modification of---
 a package originally developed and copyrighted by Arjen Lenstra,
 who has agreed to renounce any copyright claims on the particular 
-version of the long integer package appearing in NTL, so that the
+version of the long integer package appearing in NTL, so that 
 this package now is covered by the GNU GPL as well.
 
 Note that the alternative long integer package used by NTL is GMP,

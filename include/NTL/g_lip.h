@@ -1,12 +1,11 @@
 
 
-#ifdef NTL_SINGLE_MUL
-#error "do not set NTL_SINGLE_MUL when NTL_GMP_LIP is set"
-#endif
 
 #if 1
 
 typedef void *_ntl_gbigint;
+typedef void _ntl_gbigint_body;
+
 
 #else
 
@@ -15,16 +14,71 @@ typedef void *_ntl_gbigint;
  * but better for debugging.
  */
 
-struct _ntl_gbigint_is_opaque { int _x_; };
+struct _ntl_gbigint_is_opaque { long _x_; };
 typedef struct _ntl_gbigint_is_opaque * _ntl_gbigint;
+
+typedef _ntl_gbigint_is_opaque  _ntl_gbigint_body;
 
 #endif
 
+
+#if (defined(NTL_HAVE_LL_TYPE) && !defined(NTL_LEGACY_SP_MULMOD))
+
+#define NTL_LONGLONG_SP_MULMOD
+
+// on 64 bit machines, hold NTL_SP_NBITS to 60 bits,
+// as certain operations (in particular, TBL_REM in g_lip_impl.h)
+// are a bit faster
+
+
+#if (!defined(NTL_MAXIMIZE_SP_NBITS) && NTL_BITS_PER_LONG >= 64)
+#define NTL_SP_NBITS (NTL_BITS_PER_LONG-4)
+#else
+#define NTL_SP_NBITS (NTL_BITS_PER_LONG-2)
+#endif
+
+
+#define NTL_NSP_NBITS NTL_NBITS_MAX
+
+#if (NTL_NSP_NBITS > NTL_SP_NBITS)
+#undef NTL_NSP_NBITS
+#define NTL_NSP_NBITS NTL_SP_NBITS
+#endif
+
+
+#elif (NTL_LONGDOUBLE_OK && !defined(NTL_LEGACY_SP_MULMOD) && !defined(NTL_DISABLE_LONGDOUBLE))
+
+#define NTL_LONGDOUBLE_SP_MULMOD
+
+#define NTL_SP_NBITS NTL_WNBITS_MAX
+
+// on 64 bit machines, hold NTL_SP_NBITS to 60 bits (see above)
+
+#if (!defined(NTL_MAXIMIZE_SP_NBITS) && NTL_BITS_PER_LONG >= 64 && NTL_SP_NBITS > NTL_BITS_PER_LONG-4)
+#undef NTL_SP_NBITS
+#define NTL_SP_NBITS (NTL_BITS_PER_LONG-4)
+#endif
+
+#define NTL_NSP_NBITS NTL_NBITS_MAX
+#if (NTL_NSP_NBITS > NTL_SP_NBITS)
+#undef NTL_NSP_NBITS
+#define NTL_NSP_NBITS NTL_SP_NBITS
+#endif
+
+
+#else
+
+
 #define NTL_SP_NBITS NTL_NBITS_MAX
-#define NTL_SP_BOUND (1L << NTL_SP_NBITS)
-#define NTL_SP_FBOUND ((double) NTL_SP_BOUND)
+#define NTL_NSP_NBITS NTL_NBITS_MAX
+
+
+#endif
 
 #define NTL_WSP_NBITS (NTL_BITS_PER_LONG-2)
+
+#define NTL_SP_BOUND (1L << NTL_SP_NBITS)
+#define NTL_NSP_BOUND (1L << NTL_NSP_NBITS)
 #define NTL_WSP_BOUND (1L << NTL_WSP_NBITS)
 
 /* define the following so an error is raised */
@@ -39,9 +93,6 @@ typedef struct _ntl_gbigint_is_opaque * _ntl_gbigint;
 
 
 
-#if (defined(__cplusplus) && !defined(NTL_CXX_ONLY))
-extern "C" {
-#endif
 
 
 /***********************************************************************
@@ -94,6 +145,22 @@ extern "C" {
 	  The division is performed in place (but may sometimes
 	  assumes b > 0 and *r >= 0;
           cause *r to grow by one digit) */
+
+    void _ntl_gsaddmul(_ntl_gbigint x, long y,  _ntl_gbigint *ww);
+      /* *ww += x*y */
+
+    void _ntl_gaddmul(_ntl_gbigint x, _ntl_gbigint y,  _ntl_gbigint *ww);
+      /* *ww += x*y */
+
+    void _ntl_gssubmul(_ntl_gbigint x, long y,  _ntl_gbigint *ww);
+      /* *ww -= x*y */
+
+    void _ntl_gsubmul(_ntl_gbigint x, _ntl_gbigint y,  _ntl_gbigint *ww);
+      /* *ww -= x*y */
+
+
+
+
 
 /********************************************************************
 
@@ -388,12 +455,25 @@ extern "C" {
 
 ***********************************************************************/
 
+    inline
+    long _ntl_gmaxalloc(_ntl_gbigint x)
+    {
+      if (!x)
+         return 0;
+      else
+         return ((((long *) (x))[0]) >> 2);
+    }
+
+    /* DIRT: the above maxalloc routine is inlined, with the definition
+       of ALLOC copied and pasted. */
+
 
     void _ntl_gsetlength(_ntl_gbigint *v, long len);
        /* Allocates enough space to hold a len-digit number,
           where each digit has NTL_NBITS bits.
           If space must be allocated, space for one extra digit
-          is always allocated. */
+          is always allocated. if (exact) then no rounding
+          occurs. */
 
     void _ntl_gfree(_ntl_gbigint *x);
        /* Free's space held by x, and sets x back to 0. */
@@ -422,37 +502,9 @@ long _ntl_gblock_destroy(_ntl_gbigint x);
 long _ntl_gblock_storage(long d);
 
 
-void _ntl_gcrt_struct_init(void **crt_struct, long n, _ntl_gbigint p,
-                          const long *primes);
-void _ntl_gcrt_struct_insert(void *crt_struct, long i, _ntl_gbigint m);
-void _ntl_gcrt_struct_free(void *crt_struct);
-void _ntl_gcrt_struct_eval(void *crt_struct, _ntl_gbigint *t, const long *a);
-long _ntl_gcrt_struct_special(void *crt_struct);
 
-void _ntl_grem_struct_init(void **rem_struct, long n, _ntl_gbigint p,
-                          const long *primes);
-void _ntl_grem_struct_free(void *rem_struct);
-void _ntl_grem_struct_eval(void *rem_struct, long *x, _ntl_gbigint a);
-
-
-
-
-#if (defined(__cplusplus) && !defined(NTL_CXX_ONLY))
-}
-#endif
-
-
-extern int _ntl_gmp_hack;
-
-#define NTL_crt_struct_eval _ntl_gcrt_struct_eval
-#define NTL_crt_struct_free _ntl_gcrt_struct_free
-#define NTL_crt_struct_init _ntl_gcrt_struct_init
-#define NTL_crt_struct_insert _ntl_gcrt_struct_insert
-#define NTL_crt_struct_special _ntl_gcrt_struct_special
-#define NTL_rem_struct_eval _ntl_grem_struct_eval
-#define NTL_rem_struct_free _ntl_grem_struct_free
-#define NTL_rem_struct_init _ntl_grem_struct_init
 #define NTL_verylong _ntl_gbigint
+#define NTL_verylong_body _ntl_gbigint_body
 #define NTL_z2log _ntl_g2log
 #define NTL_zabs _ntl_gabs
 #define NTL_zadd _ntl_gadd
@@ -501,6 +553,7 @@ extern int _ntl_gmp_hack;
 #define NTL_zscompare _ntl_gscompare
 #define NTL_zsdiv _ntl_gsdiv
 #define NTL_zsetbit _ntl_gsetbit
+#define NTL_zmaxalloc _ntl_gmaxalloc
 #define NTL_zsetlength _ntl_gsetlength
 #define NTL_zsign _ntl_gsign
 #define NTL_zsize _ntl_gsize
@@ -527,6 +580,13 @@ extern int _ntl_gmp_hack;
 #define NTL_zxor _ntl_gxor
 #define NTL_zxxratrecon _ntl_gxxratrecon
 #define NTL_zzero _ntl_gzero
+
+#define NTL_zsaddmul _ntl_gsaddmul
+#define NTL_zaddmul _ntl_gaddmul
+#define NTL_zssubmul _ntl_gssubmul
+#define NTL_zsubmul _ntl_gsubmul
+
+
 
 #define NTL_GMP_LIP
 
