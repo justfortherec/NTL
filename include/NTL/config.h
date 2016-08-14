@@ -322,9 +322,8 @@ using the configure script.
 
 
 /* There are three strategies to implmement single-precision
- * modular multiplication with precondinition (see the MulModPrecon
- * function in the ZZ module): the default, and NTL_SPMM_ULL,
- * and NTL_SPMM_ASM.
+ * modular multiplication with preconditioning (see the MulModPrecon
+ * function in the ZZ module): the default and NTL_SPMM_ULL.
  * This plays a crucial role in the  "small prime FFT" used to 
  * implement polynomial arithmetic, and in other CRT-based methods 
  * (such as linear  algebra over ZZ), as well as polynomial and matrix 
@@ -333,7 +332,7 @@ using the configure script.
 
 
 
-#if 0
+#if 1
 #define NTL_SPMM_ULL
 
 /*    This also causes an "all integer"
@@ -342,16 +341,6 @@ using the configure script.
  *    but it is not enturely portable.
  *    It relies on double-word unsigned multiplication
  *    (see NTL_UNSIGNED_LONG_LONG_TYPE above). 
- *
- */
-
-#elif 0
-#define NTL_SPMM_ASM
-
-/*    Like this previous flag, this also causes an "all integer"
- *    implementation of MulModPrecon to be used.
- *    It relies assembler code to do double-word unsigned multiplication.
- *    This is only supported on a select mechines under GCC. 
  *
  */
 
@@ -365,7 +354,7 @@ using the configure script.
  * FFT modulo single-precision primes is implemented.
  */
 
-#if 0
+#if 1
 #define NTL_FFT_BIGTAB
 
 /*
@@ -378,12 +367,10 @@ using the configure script.
 #endif
 
 
-#if 0
+#if 1
 #define  NTL_FFT_LAZYMUL
 
 /*
- * This flag only has an effect when combined with 
- * either the NTL_SPMM_ULL or NTL_SPMM_ASM flags. 
  * When set, a "lazy multiplication" strategy due to David Harvey:
  * see his paper "FASTER ARITHMETIC FOR NUMBER-THEORETIC TRANSFORMS".
  *
@@ -394,7 +381,7 @@ using the configure script.
 
 
 
-#if 0
+#if 1
 #define NTL_AVOID_BRANCHING
 
 /*
@@ -411,7 +398,7 @@ using the configure script.
 
 
 
-#if 0
+#if 1
 #define NTL_TBL_REM
 
 /*
@@ -425,7 +412,7 @@ using the configure script.
 
 
 
-#if 0
+#if 1
 #define NTL_CRT_ALTCODE
 
 /*
@@ -462,7 +449,7 @@ using the configure script.
  *
  */
 
-#elif 0
+#elif 1
 #define NTL_GF2X_ALTCODE1
 
 
@@ -482,19 +469,6 @@ using the configure script.
  * By default, the low-level GF2X multiplication routine in inlined.
  * This can potentially lead to some trouble on some platforms,
  * and you can override the default by setting this flag.
- *
- */
-
-#endif
-
-
-#if 0
-#define NTL_PCLMUL
-
-/* 
- * Use this flag for faster GF2X arithmetc.  
- * This enables the use of the PCLMUL instruction on x86-64
- * machines. 
  *
  */
 
